@@ -7,7 +7,7 @@ const milestones = [
   { year: '2021', event: 'Launched our debut menswear collection — sold out within 72 hours.' },
   { year: '2022', event: 'Expanded to womenswear with handcrafted sarees and contemporary kurtis.' },
   { year: '2023', event: 'Partnered with 50+ master artisans across Rajasthan, Gujarat, and Varanasi.' },
-  { year: '2024', event: 'Crossed 1,00,000 happy customers and expanded our curated luxury fashion collections.' },
+  { year: '2024', event: 'Crossed 1,00,000 happy customers and launched our curated multi-seller marketplace.' },
   { year: '2025', event: 'Expanded internationally, delivering to 20+ countries across the globe.' },
 ];
 
