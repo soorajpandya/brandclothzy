@@ -167,9 +167,11 @@ export default function Navbar() {
                         <Link to="/wishlist" className="block px-4 py-2.5 text-sm text-neutral-600 hover:bg-luxury-pearl transition-colors">
                           Wishlist
                         </Link>
-                        <Link to="/dashboard" className="block px-4 py-2.5 text-sm text-neutral-600 hover:bg-luxury-pearl transition-colors">
-                          Dashboard
-                        </Link>
+                        {user?.email === 'soorajpandya@gmail.com' && (
+                          <Link to="/dashboard" className="block px-4 py-2.5 text-sm text-neutral-600 hover:bg-luxury-pearl transition-colors">
+                            Admin Dashboard
+                          </Link>
+                        )}
                         <button
                           onClick={logout}
                           className="w-full text-left px-4 py-2.5 text-sm text-neutral-600 hover:bg-luxury-pearl transition-colors flex items-center gap-2"

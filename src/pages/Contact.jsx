@@ -150,7 +150,7 @@ export default function Contact() {
                   'Ahmedabad, Gujarat 380060',
                 ],
               },
-              { icon: Phone, title: 'Call Us', lines: ['+91 90238 44259', 'Mon – Sat, 10AM – 7PM IST'] },
+              { icon: Phone, title: 'Call Us', lines: ['+91 77788 67131', 'Mon – Sat, 10AM – 7PM IST'] },
               { icon: Mail, title: 'Email', lines: ['concierge@brandclothzy.com', 'press@brandclothzy.com'] },
               { icon: Clock, title: 'Working Hours', lines: ['Monday – Saturday: 10AM – 7PM', 'Sunday: 11AM – 5PM'] },
             ].map(({ icon: Icon, title, lines }) => (

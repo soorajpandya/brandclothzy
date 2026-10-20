@@ -21,9 +21,6 @@ const Terms = lazy(() => import('./pages/Terms'));
 const Cookies = lazy(() => import('./pages/Cookies'));
 const About = lazy(() => import('./pages/About'));
 
-// Seller pages
-const SellerApplication = lazy(() => import('./pages/seller/SellerApplication'));
-
 // Unified Dashboard
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 
@@ -73,9 +70,6 @@ export default function App() {
           <Route path="/terms" element={<Terms />} />
           <Route path="/cookies" element={<Cookies />} />
           <Route path="/about" element={<About />} />
-
-          {/* Seller application (standalone) */}
-          <Route path="/seller/apply" element={<SellerApplication />} />
 
           {/* Unified Dashboard */}
           <Route path="/dashboard" element={<Dashboard />} />

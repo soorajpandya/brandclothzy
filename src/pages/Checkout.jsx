@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle, Lock, ArrowRight, Smartphone, CreditCard, Landmark } from 'lucide-react';
 import { useCart } from '../context/CartContext';
@@ -319,8 +319,20 @@ export default function Checkout() {
 
           <p className="mt-8 text-[11px] text-neutral-400 font-light leading-relaxed">
             By signing in, you agree to our{' '}
-            <Link to="/terms" className="underline hover:text-luxury-charcoal">Terms of Service</Link>{' '}and{' '}
-            <Link to="/privacy" className="underline hover:text-luxury-charcoal">Privacy Policy</Link>.
+            <Link
+              to="/terms"
+              onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
+              className="underline hover:text-luxury-charcoal"
+            >
+              Terms of Service
+            </Link>{' '}and{' '}
+            <Link
+              to="/privacy"
+              onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
+              className="underline hover:text-luxury-charcoal"
+            >
+              Privacy Policy
+            </Link>.
           </p>
         </div>
       </div>
