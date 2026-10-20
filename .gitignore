@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+server/.env
+
+# Build output
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local secrets and credentials
+.env.*
+!.env.example
+*.pem
+*.key
+Brand_Clothzy_Razorpay_Keys.txt
