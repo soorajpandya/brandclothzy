@@ -2,9 +2,10 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Store, Package, Users, ShoppingCart, BarChart3,
-  Shield, Menu, X
+  Shield, Menu, X, Plus
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useSeller } from '../context/SellerContext';
 import { useMarketplace } from '../context/MarketplaceContext';
 import SEO from '../components/SEO';
 
@@ -17,14 +18,15 @@ const AdminCatalogPanel = lazy(() => import('./admin/AdminCatalog'));
 const AdminPerformancePanel = lazy(() => import('./admin/AdminPerformance'));
 const SellerDashboardPanel = lazy(() => import('./seller/SellerDashboard'));
 const SellerProductsPanel = lazy(() => import('./seller/SellerProducts'));
+const SellerApplicationPanel = lazy(() => import('./seller/SellerApplication'));
 
-// Phase 1: Seller / Store Management
+// Seller Navigation
 const SELLER_NAV = [
   { id: 'seller-overview', label: 'My Store', icon: Store, panel: 'seller-dashboard' },
   { id: 'seller-products', label: 'My Products', icon: Package, panel: 'seller-products' },
 ];
 
-// Phase 2: Marketplace Admin
+// Admin Navigation
 const ADMIN_NAV = [
   { id: 'admin-dashboard', label: 'Overview', icon: LayoutDashboard, panel: 'admin-dashboard' },
   { id: 'admin-sellers', label: 'Sellers', icon: Users, panel: 'admin-sellers' },
@@ -34,7 +36,12 @@ const ADMIN_NAV = [
   { id: 'admin-performance', label: 'Performance', icon: BarChart3, panel: 'admin-performance' },
 ];
 
-const ALL_NAV = [...SELLER_NAV, ...ADMIN_NAV];
+const ALL_PANELS = [
+  'seller-dashboard',
+  'seller-products',
+  'seller-apply',
+  ...ADMIN_NAV.map(n => n.panel),
+];
 
 function PanelLoader() {
   return (
@@ -46,58 +53,67 @@ function PanelLoader() {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { sellerProfile, sellerLoading } = useSeller();
   const { isAdmin } = useMarketplace();
   const navigate = useNavigate();
   const location = useLocation();
 
+  const isSeller = !!sellerProfile;
+  const onboardingDone = sellerProfile && ['onboarding_complete', 'live'].includes(sellerProfile.status);
+
+  // Compute active panel based on URL hash or smart default
   const currentHash = location.hash.replace('#', '');
-  const activePanel = ALL_NAV.some(n => n.panel === currentHash)
+  const activePanel = ALL_PANELS.includes(currentHash)
     ? currentHash
-    : 'admin-dashboard';
+    : isAdmin()
+    ? 'admin-dashboard'
+    : isSeller
+    ? 'seller-dashboard'
+    : 'seller-apply';
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (!user) {
-      navigate('/account');
-    } else if (!isAdmin()) {
+    if (!user && !sellerLoading) {
       navigate('/account');
     }
-  }, [user, navigate, isAdmin]);
+  }, [user, sellerLoading, navigate]);
 
   const switchPanel = (panelId) => {
     navigate(`/dashboard#${panelId}`, { replace: true });
     setSidebarOpen(false);
   };
 
-  if (!user || !isAdmin()) return null;
+  if (!user) return null;
 
   const renderPanel = () => {
     switch (activePanel) {
       case 'seller-dashboard':
-        return <SellerDashboardPanel embedded />;
+        return isSeller || isAdmin() ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />;
       case 'seller-products':
-        return <SellerProductsPanel embedded />;
+        return isSeller || isAdmin() ? <SellerProductsPanel embedded /> : <SellerApplicationPanel embedded />;
+      case 'seller-apply':
+        return <SellerApplicationPanel embedded />;
       case 'admin-dashboard':
-        return <AdminDashboardPanel embedded />;
+        return isAdmin() ? <AdminDashboardPanel embedded /> : <SellerDashboardPanel embedded />;
       case 'admin-sellers':
-        return <AdminReviewPanel embedded />;
+        return isAdmin() ? <AdminReviewPanel embedded /> : <SellerDashboardPanel embedded />;
       case 'admin-products':
-        return <AdminProductsPanel embedded />;
+        return isAdmin() ? <AdminProductsPanel embedded /> : <SellerDashboardPanel embedded />;
       case 'admin-orders':
-        return <AdminOrdersPanel embedded />;
+        return isAdmin() ? <AdminOrdersPanel embedded /> : <SellerDashboardPanel embedded />;
       case 'admin-catalog':
-        return <AdminCatalogPanel embedded />;
+        return isAdmin() ? <AdminCatalogPanel embedded /> : <SellerDashboardPanel embedded />;
       case 'admin-performance':
-        return <AdminPerformancePanel embedded />;
+        return isAdmin() ? <AdminPerformancePanel embedded /> : <SellerDashboardPanel embedded />;
       default:
-        return <AdminDashboardPanel embedded />;
+        return isAdmin() ? <AdminDashboardPanel embedded /> : (isSeller ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />);
     }
   };
 
   return (
     <div className="pt-16 lg:pt-20 min-h-screen bg-neutral-50">
-      <SEO title="Admin Dashboard" path="/dashboard" noindex />
+      <SEO title="Dashboard" path="/dashboard" noindex />
 
       {/* Mobile sidebar toggle */}
       <button
@@ -131,55 +147,81 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Phase 1: Seller / My Store Section */}
+            {/* Seller Section */}
             <div className="mb-6">
               <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-2 px-2 flex items-center gap-1.5">
                 <Store size={10} />
-                Seller (My Store)
+                Seller
               </p>
-              <nav className="space-y-0.5">
-                {SELLER_NAV.map(item => {
-                  const Icon = item.icon;
-                  const isActive = activePanel === item.panel;
-                  return (
-                    <button key={item.id} onClick={() => switchPanel(item.panel)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
-                        isActive
-                          ? 'bg-luxury-charcoal text-white font-medium'
-                          : 'text-neutral-500 hover:bg-neutral-50 hover:text-luxury-charcoal'
-                      }`}>
-                      <Icon size={14} />
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </nav>
+              {isSeller || isAdmin() ? (
+                <nav className="space-y-0.5">
+                  {SELLER_NAV
+                    .filter(item => onboardingDone || isAdmin() || item.panel === 'seller-dashboard')
+                    .map(item => {
+                    const Icon = item.icon;
+                    const isActive = activePanel === item.panel;
+                    return (
+                      <button key={item.id} onClick={() => switchPanel(item.panel)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
+                          isActive
+                            ? 'bg-luxury-charcoal text-white font-medium'
+                            : 'text-neutral-500 hover:bg-neutral-50 hover:text-luxury-charcoal'
+                        }`}>
+                        <Icon size={14} />
+                        {item.label}
+                        {item.panel === 'seller-dashboard' && sellerProfile?.status && (
+                          <span className={`ml-auto w-1.5 h-1.5 rounded-full ${
+                            sellerProfile.status === 'live' ? 'bg-green-500' :
+                            sellerProfile.status === 'approved' ? 'bg-emerald-400' :
+                            sellerProfile.status === 'rejected' ? 'bg-red-400' :
+                            'bg-amber-400'
+                          }`} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </nav>
+              ) : (
+                <button
+                  onClick={() => switchPanel('seller-apply')}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
+                    activePanel === 'seller-apply'
+                      ? 'bg-luxury-charcoal text-white font-medium'
+                      : 'text-neutral-500 hover:bg-neutral-50 hover:text-luxury-charcoal'
+                  }`}
+                >
+                  <Plus size={14} />
+                  Become a Seller
+                </button>
+              )}
             </div>
 
-            {/* Phase 2: Marketplace Admin Section */}
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-2 px-2 flex items-center gap-1.5">
-                <Shield size={10} />
-                Admin Panel
-              </p>
-              <nav className="space-y-0.5">
-                {ADMIN_NAV.map(item => {
-                  const Icon = item.icon;
-                  const isActive = activePanel === item.panel;
-                  return (
-                    <button key={item.id} onClick={() => switchPanel(item.panel)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
-                        isActive
-                          ? 'bg-luxury-charcoal text-white font-medium'
-                          : 'text-neutral-500 hover:bg-neutral-50 hover:text-luxury-charcoal'
-                      }`}>
-                      <Icon size={14} />
-                      {item.label}
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
+            {/* Admin Section */}
+            {isAdmin() && (
+              <div>
+                <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-2 px-2 flex items-center gap-1.5">
+                  <Shield size={10} />
+                  Admin Panel
+                </p>
+                <nav className="space-y-0.5">
+                  {ADMIN_NAV.map(item => {
+                    const Icon = item.icon;
+                    const isActive = activePanel === item.panel;
+                    return (
+                      <button key={item.id} onClick={() => switchPanel(item.panel)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
+                          isActive
+                            ? 'bg-luxury-charcoal text-white font-medium'
+                            : 'text-neutral-500 hover:bg-neutral-50 hover:text-luxury-charcoal'
+                        }`}>
+                        <Icon size={14} />
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+            )}
           </div>
         </aside>
 

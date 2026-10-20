@@ -5,6 +5,7 @@ import {
   ShoppingBag,
   Heart,
   Package,
+  Store,
   Shield,
   ChevronDown,
   ChevronUp,
@@ -18,6 +19,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useSeller } from '../context/SellerContext';
 import { useMarketplace } from '../context/MarketplaceContext';
 import { displayPrice } from '../utils/helpers';
 import Button from '../components/Button';
@@ -34,6 +36,7 @@ export default function Account() {
     logout,
     loading,
   } = useAuth();
+  const { sellerProfile } = useSeller();
   const { fetchUserOrders, isAdmin } = useMarketplace();
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
@@ -570,20 +573,41 @@ export default function Account() {
           )}
         </div>
 
-        {/* Admin Section (only visible to admin) */}
-        {isAdmin() && (
-          <div className="mb-12">
-            <h2 className="text-[10px] uppercase tracking-[0.2em] font-medium text-luxury-taupe mb-4">Administration</h2>
-            <Link to="/dashboard#admin-dashboard"
-              className="flex items-center gap-3 p-5 border border-neutral-200 hover:border-luxury-gold transition-colors">
-              <Shield size={18} className="text-luxury-gold" />
-              <div>
-                <span className="text-sm font-medium text-luxury-charcoal block">Admin Panel</span>
-                <span className="text-[10px] text-neutral-400">Manage marketplace</span>
-              </div>
-            </Link>
+        {/* Seller Section */}
+        <div className="mb-12">
+          <h2 className="text-[10px] uppercase tracking-[0.2em] font-medium text-luxury-taupe mb-4">Seller</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {sellerProfile ? (
+              <Link to="/dashboard#seller-dashboard"
+                className="flex items-center gap-3 p-5 border border-neutral-200 hover:border-luxury-gold transition-colors">
+                <Store size={18} className="text-luxury-gold" />
+                <div>
+                  <span className="text-sm font-medium text-luxury-charcoal block">Seller Dashboard</span>
+                  <span className="text-[10px] text-neutral-400 capitalize">{sellerProfile.status?.replace(/_/g, ' ')}</span>
+                </div>
+              </Link>
+            ) : (
+              <Link to="/seller/apply"
+                className="flex items-center gap-3 p-5 border border-neutral-200 hover:border-luxury-gold transition-colors">
+                <Store size={18} className="text-luxury-gold" />
+                <div>
+                  <span className="text-sm font-medium text-luxury-charcoal block">Sell on BrandClothzy</span>
+                  <span className="text-[10px] text-neutral-400">Apply to become a seller</span>
+                </div>
+              </Link>
+            )}
+            {isAdmin() && (
+              <Link to="/dashboard#admin-dashboard"
+                className="flex items-center gap-3 p-5 border border-neutral-200 hover:border-luxury-gold transition-colors">
+                <Shield size={18} className="text-luxury-gold" />
+                <div>
+                  <span className="text-sm font-medium text-luxury-charcoal block">Admin Panel</span>
+                  <span className="text-[10px] text-neutral-400">Manage marketplace</span>
+                </div>
+              </Link>
+            )}
           </div>
-        )}
+        </div>
 
         <div className="text-center">
           <button
