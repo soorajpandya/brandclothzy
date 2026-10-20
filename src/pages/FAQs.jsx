@@ -17,7 +17,7 @@ const faqs = [
     category: 'Returns & Exchanges',
     questions: [
       { q: 'What is your return policy?', a: 'We accept returns within 14 days of delivery for unworn items in original condition with all tags attached. Items must be returned in their original packaging.' },
-      { q: 'How do I initiate a return?', a: 'Contact our concierge team at concierge@brandclothzy.com or call +91 90238 44259 to request a return authorisation. We will arrange a complimentary pickup from your address.' },
+      { q: 'How do I initiate a return?', a: 'Contact our concierge team at concierge@brandclothzy.com or call +91 77788 67131 to request a return authorisation. We will arrange a complimentary pickup from your address.' },
       { q: 'Can I exchange an item for a different size?', a: 'Yes, exchanges for a different size are complimentary, subject to availability. Please contact our team within 14 days of receiving your order.' },
     ],
   },

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import Button from '../components/Button';
@@ -13,6 +13,9 @@ const cookieTypes = [
 ];
 
 export default function Cookies() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, []);
   const { addToast } = useUI();
   const [preferences, setPreferences] = useState({
     essential: true,
@@ -55,7 +58,11 @@ export default function Cookies() {
           <p className="text-sm text-neutral-500 font-light leading-relaxed mb-12">
             We use cookies to enhance your experience on our website. You can manage your preferences below.
             For more information, please read our{' '}
-            <Link to="/privacy" className="text-luxury-charcoal underline hover:text-luxury-gold transition-colors">
+            <Link
+              to="/privacy"
+              onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
+              className="text-luxury-charcoal underline hover:text-luxury-gold transition-colors"
+            >
               Privacy Policy
             </Link>.
           </p>

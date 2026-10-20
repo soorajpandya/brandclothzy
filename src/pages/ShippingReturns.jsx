@@ -115,7 +115,7 @@ export default function ShippingReturns() {
                 <p>
                   Orders may be cancelled within <strong className="text-luxury-charcoal">2 hours of placement</strong>, provided they have not yet been dispatched. To cancel, contact our concierge team immediately at{' '}
                   <span className="text-luxury-charcoal">concierge@brandclothzy.com</span> or call{' '}
-                  <span className="text-luxury-charcoal">+91 90238 44259</span>. Once dispatched, orders cannot be cancelled or refunded.
+                  <span className="text-luxury-charcoal">+91 77788 67131</span>. Once dispatched, orders cannot be cancelled or refunded.
                 </p>
               </div>
             </div>

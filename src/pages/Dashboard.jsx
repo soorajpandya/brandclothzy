@@ -2,10 +2,9 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Store, Package, Users, ShoppingCart, BarChart3,
-  Shield, ChevronLeft, ChevronRight, Menu, X, Plus
+  Shield, Menu, X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useSeller } from '../context/SellerContext';
 import { useMarketplace } from '../context/MarketplaceContext';
 import SEO from '../components/SEO';
 
@@ -18,13 +17,14 @@ const AdminCatalogPanel = lazy(() => import('./admin/AdminCatalog'));
 const AdminPerformancePanel = lazy(() => import('./admin/AdminPerformance'));
 const SellerDashboardPanel = lazy(() => import('./seller/SellerDashboard'));
 const SellerProductsPanel = lazy(() => import('./seller/SellerProducts'));
-const SellerApplicationPanel = lazy(() => import('./seller/SellerApplication'));
 
+// Phase 1: Seller / Store Management
 const SELLER_NAV = [
   { id: 'seller-overview', label: 'My Store', icon: Store, panel: 'seller-dashboard' },
   { id: 'seller-products', label: 'My Products', icon: Package, panel: 'seller-products' },
 ];
 
+// Phase 2: Marketplace Admin
 const ADMIN_NAV = [
   { id: 'admin-dashboard', label: 'Overview', icon: LayoutDashboard, panel: 'admin-dashboard' },
   { id: 'admin-sellers', label: 'Sellers', icon: Users, panel: 'admin-sellers' },
@@ -33,6 +33,8 @@ const ADMIN_NAV = [
   { id: 'admin-catalog', label: 'Catalog', icon: BarChart3, panel: 'admin-catalog' },
   { id: 'admin-performance', label: 'Performance', icon: BarChart3, panel: 'admin-performance' },
 ];
+
+const ALL_NAV = [...SELLER_NAV, ...ADMIN_NAV];
 
 function PanelLoader() {
   return (
@@ -44,77 +46,58 @@ function PanelLoader() {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { sellerProfile, sellerLoading } = useSeller();
   const { isAdmin } = useMarketplace();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Determine active panel from URL hash or default
-  const getInitialPanel = () => {
-    const hash = location.hash.replace('#', '');
-    if (hash) return hash;
-    return 'admin-dashboard';
-  };
+  const currentHash = location.hash.replace('#', '');
+  const activePanel = ALL_NAV.some(n => n.panel === currentHash)
+    ? currentHash
+    : 'admin-dashboard';
 
-  const [activePanel, setActivePanel] = useState(getInitialPanel);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (!user && !sellerLoading) navigate('/account');
-  }, [user, sellerLoading, navigate]);
-
-  // Sync hash with active panel
-  useEffect(() => {
-    const hash = location.hash.replace('#', '');
-    if (hash && hash !== activePanel) {
-      setActivePanel(hash);
+    if (!user) {
+      navigate('/account');
+    } else if (!isAdmin()) {
+      navigate('/account');
     }
-  }, [location.hash]);
+  }, [user, navigate, isAdmin]);
 
   const switchPanel = (panelId) => {
-    setActivePanel(panelId);
-    window.history.replaceState(null, '', `/dashboard#${panelId}`);
+    navigate(`/dashboard#${panelId}`, { replace: true });
     setSidebarOpen(false);
   };
 
-  if (!user) return null;
-
-  const isSeller = !!sellerProfile;
-  const onboardingDone = sellerProfile && ['onboarding_complete', 'live'].includes(sellerProfile.status);
-
-  // Force seller-dashboard panel until onboarding is complete
-  const effectivePanel = (!onboardingDone)
-    ? (isSeller ? 'seller-dashboard' : 'seller-apply')
-    : activePanel;
+  if (!user || !isAdmin()) return null;
 
   const renderPanel = () => {
-    switch (effectivePanel) {
+    switch (activePanel) {
       case 'seller-dashboard':
-        return isSeller ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />;
+        return <SellerDashboardPanel embedded />;
       case 'seller-products':
-        return isSeller ? <SellerProductsPanel embedded /> : <SellerApplicationPanel embedded />;
-      case 'seller-apply':
-        return <SellerApplicationPanel embedded />;
+        return <SellerProductsPanel embedded />;
       case 'admin-dashboard':
-        return isAdmin() ? <AdminDashboardPanel embedded /> : (isSeller ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />);
+        return <AdminDashboardPanel embedded />;
       case 'admin-sellers':
-        return isAdmin() ? <AdminReviewPanel embedded /> : (isSeller ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />);
+        return <AdminReviewPanel embedded />;
       case 'admin-products':
-        return isAdmin() ? <AdminProductsPanel embedded /> : (isSeller ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />);
+        return <AdminProductsPanel embedded />;
       case 'admin-orders':
-        return isAdmin() ? <AdminOrdersPanel embedded /> : (isSeller ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />);
+        return <AdminOrdersPanel embedded />;
       case 'admin-catalog':
-        return isAdmin() ? <AdminCatalogPanel embedded /> : (isSeller ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />);
+        return <AdminCatalogPanel embedded />;
       case 'admin-performance':
-        return isAdmin() ? <AdminPerformancePanel embedded /> : (isSeller ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />);
+        return <AdminPerformancePanel embedded />;
       default:
-        return isSeller ? <SellerDashboardPanel embedded /> : <SellerApplicationPanel embedded />;
+        return <AdminDashboardPanel embedded />;
     }
   };
 
   return (
     <div className="pt-16 lg:pt-20 min-h-screen bg-neutral-50">
-      <SEO title="Dashboard" path="/dashboard" noindex />
+      <SEO title="Admin Dashboard" path="/dashboard" noindex />
 
       {/* Mobile sidebar toggle */}
       <button
@@ -148,64 +131,16 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Seller Section */}
+            {/* Phase 1: Seller / My Store Section */}
             <div className="mb-6">
               <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-2 px-2 flex items-center gap-1.5">
                 <Store size={10} />
-                Seller
-              </p>
-              {isSeller ? (
-                <nav className="space-y-0.5">
-                  {SELLER_NAV
-                    .filter(item => onboardingDone || item.panel === 'seller-dashboard')
-                    .map(item => {
-                    const Icon = item.icon;
-                    const isActive = effectivePanel === item.panel;
-                    return (
-                      <button key={item.id} onClick={() => switchPanel(item.panel)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
-                          isActive
-                            ? 'bg-luxury-charcoal text-white font-medium'
-                            : 'text-neutral-500 hover:bg-neutral-50 hover:text-luxury-charcoal'
-                        }`}>
-                        <Icon size={14} />
-                        {item.label}
-                        {item.panel === 'seller-dashboard' && sellerProfile?.status && (
-                          <span className={`ml-auto w-1.5 h-1.5 rounded-full ${
-                            sellerProfile.status === 'live' ? 'bg-green-500' :
-                            sellerProfile.status === 'approved' ? 'bg-emerald-400' :
-                            sellerProfile.status === 'rejected' ? 'bg-red-400' :
-                            'bg-amber-400'
-                          }`} />
-                        )}
-                      </button>
-                    );
-                  })}
-                </nav>
-              ) : (
-                <button onClick={() => switchPanel('seller-apply')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
-                    effectivePanel === 'seller-apply'
-                      ? 'bg-luxury-charcoal text-white font-medium'
-                      : 'text-neutral-500 hover:bg-neutral-50 hover:text-luxury-charcoal'
-                  }`}>
-                  <Plus size={14} />
-                  Become a Seller
-                </button>
-              )}
-            </div>
-
-            {/* Admin Section - only visible to admin after onboarding */}
-            {onboardingDone && isAdmin() && (
-            <div>
-              <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-2 px-2 flex items-center gap-1.5">
-                <Shield size={10} />
-                Admin
+                Seller (My Store)
               </p>
               <nav className="space-y-0.5">
-                {ADMIN_NAV.map(item => {
+                {SELLER_NAV.map(item => {
                   const Icon = item.icon;
-                  const isActive = effectivePanel === item.panel;
+                  const isActive = activePanel === item.panel;
                   return (
                     <button key={item.id} onClick={() => switchPanel(item.panel)}
                       className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
@@ -220,7 +155,31 @@ export default function Dashboard() {
                 })}
               </nav>
             </div>
-            )}
+
+            {/* Phase 2: Marketplace Admin Section */}
+            <div>
+              <p className="text-[9px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-2 px-2 flex items-center gap-1.5">
+                <Shield size={10} />
+                Admin Panel
+              </p>
+              <nav className="space-y-0.5">
+                {ADMIN_NAV.map(item => {
+                  const Icon = item.icon;
+                  const isActive = activePanel === item.panel;
+                  return (
+                    <button key={item.id} onClick={() => switchPanel(item.panel)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors ${
+                        isActive
+                          ? 'bg-luxury-charcoal text-white font-medium'
+                          : 'text-neutral-500 hover:bg-neutral-50 hover:text-luxury-charcoal'
+                      }`}>
+                      <Icon size={14} />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
           </div>
         </aside>
 

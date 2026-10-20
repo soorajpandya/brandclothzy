@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Instagram, Facebook, Twitter, Mail, MapPin, Phone } from 'lucide-react';
+import { Instagram, Facebook, Mail, MapPin, Phone } from 'lucide-react';
 import { BCMonogram, BCWordmark } from './BrandLogo';
 
 const clientServices = [
@@ -19,90 +19,109 @@ const legalLinks = [
 ];
 
 const socialLinks = [
-  { icon: Instagram, label: 'Instagram', href: 'https://instagram.com' },
-  { icon: Facebook, label: 'Facebook', href: 'https://facebook.com' },
-  { icon: Twitter, label: 'Twitter', href: 'https://x.com' },
+  { icon: Instagram, label: 'Instagram', href: 'https://www.instagram.com/brand_clothzy/' },
+  { icon: Facebook, label: 'Facebook', href: 'https://www.facebook.com/brandclothzy' },
 ];
 
 export default function Footer() {
   return (
-    <footer className="bg-luxury-charcoal text-white">
+    <footer className="bg-luxury-charcoal text-white border-t border-neutral-800/80">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-10">
-        <div className="py-16 lg:py-20 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
-          <div>
-            <div className="flex items-center gap-2 mb-6">
-              <BCMonogram size={36} light />
+        <div className="py-16 lg:py-20 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-10 lg:gap-8">
+          {/* Brand Info */}
+          <div className="lg:col-span-4 pr-0 lg:pr-6">
+            <div className="flex items-center gap-2.5 mb-6">
+              <BCMonogram size={38} light />
               <BCWordmark size="md" light />
             </div>
             <p className="text-sm text-neutral-400 leading-relaxed mb-6 font-light">
-              A brand by <span className="text-neutral-200 font-normal">Burptech Private Limited</span>, defining luxury fashion since 2020.
-              Each piece is crafted with the finest materials and uncompromising attention to detail.
+              A brand by <span className="text-white font-normal">Burptech Private Limited</span>, defining Indian luxury fashion since 2020.
+              Each piece is crafted with uncompromising attention to detail and master craftsmanship.
             </p>
-            <div className="flex gap-4">
+            <div className="flex items-center gap-3">
               {socialLinks.map(({ icon: Icon, label, href }) => (
                 <a
                   key={label}
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-9 h-9 flex items-center justify-center border border-neutral-700 text-neutral-400 hover:border-luxury-gold hover:text-luxury-gold transition-colors"
+                  className="w-10 h-10 rounded-full border border-neutral-700/80 bg-neutral-900/50 flex items-center justify-center text-neutral-400 hover:border-luxury-gold hover:text-luxury-gold hover:bg-neutral-800/70 transition-all duration-300"
                   aria-label={label}
                 >
-                  <Icon size={15} />
+                  <Icon size={16} />
                 </a>
               ))}
             </div>
           </div>
 
-          <div>
-            <h3 className="text-[10px] uppercase tracking-[0.25em] font-semibold text-neutral-400 mb-6">
-              Men
-            </h3>
-            <ul className="space-y-3">
-              {[
-                { label: 'All Men', to: '/shop?gender=Men' },
-                { label: 'Shirts', to: '/shop?gender=Men&category=Shirts' },
-                { label: 'T-Shirts', to: '/shop?gender=Men&category=T-Shirts' },
-                { label: 'Jeans', to: '/shop?gender=Men&category=Jeans' },
-                { label: 'Trousers', to: '/shop?gender=Men&category=Trousers' },
-                { label: 'Jackets', to: '/shop?gender=Men&category=Jackets' },
-              ].map(({ label, to }) => (
-                <li key={label}>
-                  <Link to={to} className="text-sm text-neutral-300 hover:text-luxury-gold transition-colors font-light">
-                    {label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <h3 className="text-[10px] uppercase tracking-[0.25em] font-semibold text-neutral-400 mt-8 mb-6">
-              Women
-            </h3>
-            <ul className="space-y-3">
-              {[
-                { label: 'All Women', to: '/shop?gender=Women' },
-                { label: 'Sarees', to: '/shop?gender=Women&category=Sarees' },
-                { label: 'Kurtis', to: '/shop?gender=Women&category=Kurtis' },
-                { label: 'Dresses', to: '/shop?gender=Women&category=Dresses' },
-                { label: 'Lehengas', to: '/shop?gender=Women&category=Lehengas' },
-                { label: 'Tops & Blouses', to: '/shop?gender=Women&category=Tops & Blouses' },
-              ].map(({ label, to }) => (
-                <li key={label}>
-                  <Link to={to} className="text-sm text-neutral-300 hover:text-luxury-gold transition-colors font-light">
-                    {label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          {/* Men & Women Links */}
+          <div className="lg:col-span-3 grid grid-cols-2 gap-6 sm:gap-8">
+            <div>
+              <h3 className="text-[11px] uppercase tracking-[0.25em] font-medium text-luxury-gold mb-6">
+                Men
+              </h3>
+              <ul className="space-y-3">
+                {[
+                  { label: 'All Men', to: '/shop?gender=Men' },
+                  { label: 'Shirts', to: '/shop?gender=Men&category=Shirts' },
+                  { label: 'T-Shirts', to: '/shop?gender=Men&category=T-Shirts' },
+                  { label: 'Jeans', to: '/shop?gender=Men&category=Jeans' },
+                  { label: 'Trousers', to: '/shop?gender=Men&category=Trousers' },
+                  { label: 'Jackets', to: '/shop?gender=Men&category=Jackets' },
+                ].map(({ label, to }) => (
+                  <li key={label}>
+                    <Link
+                      to={to}
+                      onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
+                      className="text-sm text-neutral-300 hover:text-luxury-gold transition-colors font-light"
+                    >
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="text-[11px] uppercase tracking-[0.25em] font-medium text-luxury-gold mb-6">
+                Women
+              </h3>
+              <ul className="space-y-3">
+                {[
+                  { label: 'All Women', to: '/shop?gender=Women' },
+                  { label: 'Sarees', to: '/shop?gender=Women&category=Sarees' },
+                  { label: 'Kurtis', to: '/shop?gender=Women&category=Kurtis' },
+                  { label: 'Dresses', to: '/shop?gender=Women&category=Dresses' },
+                  { label: 'Lehengas', to: '/shop?gender=Women&category=Lehengas' },
+                  { label: 'Tops & Blouses', to: '/shop?gender=Women&category=Tops & Blouses' },
+                ].map(({ label, to }) => (
+                  <li key={label}>
+                    <Link
+                      to={to}
+                      onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
+                      className="text-sm text-neutral-300 hover:text-luxury-gold transition-colors font-light"
+                    >
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
 
-          <div>
-            <h3 className="text-[10px] uppercase tracking-[0.25em] font-semibold text-neutral-400 mb-6">
+          {/* Client Services */}
+          <div className="lg:col-span-2">
+            <h3 className="text-[11px] uppercase tracking-[0.25em] font-medium text-luxury-gold mb-6">
               Client Services
             </h3>
             <ul className="space-y-3">
               {clientServices.map(({ label, to }) => (
                 <li key={label}>
-                  <Link to={to} className="text-sm text-neutral-300 hover:text-luxury-gold transition-colors font-light">
+                  <Link
+                    to={to}
+                    onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
+                    className="text-sm text-neutral-300 hover:text-luxury-gold transition-colors font-light"
+                  >
                     {label}
                   </Link>
                 </li>
@@ -110,40 +129,53 @@ export default function Footer() {
             </ul>
           </div>
 
-          <div>
-            <h3 className="text-[10px] uppercase tracking-[0.25em] font-semibold text-neutral-400 mb-6">
+          {/* Contact */}
+          <div className="lg:col-span-3">
+            <h3 className="text-[11px] uppercase tracking-[0.25em] font-medium text-luxury-gold mb-6">
               Contact
             </h3>
             <ul className="space-y-4">
               <li className="flex items-start gap-3 text-sm text-neutral-300 font-light">
-                <MapPin size={15} className="flex-shrink-0 mt-0.5 text-luxury-gold" />
-                <div className="space-y-1">
-                  <p>B-7 Aryan Bungalows</p>
-                  <p>Chankyapuri Road</p>
-                  <p>Nr Harivilla Flat</p>
-                  <p>Opp. Kargil Petrol Pump</p>
-                  <p>Ahmedabad, Gujarat 380060</p>
+                <MapPin size={16} className="flex-shrink-0 mt-0.5 text-luxury-gold" />
+                <div className="space-y-0.5 leading-relaxed text-neutral-300 text-xs sm:text-sm">
+                  <p>B-7 Aryan Bungalows, Chankyapuri Road</p>
+                  <p>Nr Harivilla Flat, Opp. Kargil Petrol Pump</p>
+                  <p className="text-neutral-400">Ahmedabad, Gujarat 380060</p>
                 </div>
               </li>
               <li className="flex items-center gap-3 text-sm text-neutral-300 font-light">
                 <Phone size={15} className="flex-shrink-0 text-luxury-gold" />
-                <span>+91 90238 44259</span>
+                <a href="tel:+917778867131" className="hover:text-luxury-gold transition-colors">
+                  +91 77788 67131
+                </a>
               </li>
               <li className="flex items-center gap-3 text-sm text-neutral-300 font-light">
                 <Mail size={15} className="flex-shrink-0 text-luxury-gold" />
-                <span>concierge@brandclothzy.com</span>
+                <a href="mailto:concierge@brandclothzy.com" className="hover:text-luxury-gold transition-colors">
+                  concierge@brandclothzy.com
+                </a>
               </li>
             </ul>
           </div>
         </div>
 
-        <div className="py-6 border-t border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-[11px] text-neutral-500 font-light">
-            &copy; {new Date().getFullYear()} BrandClothzy. All rights reserved.
-          </p>
+        {/* Bottom Bar */}
+        <div className="py-6 border-t border-neutral-800/80 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 text-[11px] text-neutral-400 font-light">
+            <p>&copy; {new Date().getFullYear()} BrandClothzy. All rights reserved.</p>
+            <span className="hidden sm:inline text-neutral-600">•</span>
+            <span className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-[10px] tracking-wider text-neutral-400">
+              GSTIN: 24AALCB9972G1Z9
+            </span>
+          </div>
           <div className="flex gap-6">
             {legalLinks.map(({ label, to }) => (
-              <Link key={label} to={to} className="text-[11px] text-neutral-500 hover:text-neutral-300 transition-colors font-light">
+              <Link
+                key={label}
+                to={to}
+                onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
+                className="text-[11px] text-neutral-400 hover:text-luxury-gold transition-colors font-light"
+              >
                 {label}
               </Link>
             ))}

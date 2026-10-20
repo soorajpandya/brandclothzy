@@ -4,7 +4,7 @@ import { ChevronRight, MapPin, Clock, Phone } from 'lucide-react';
 import SEO from '../components/SEO';
 
 const stores = [
-  { city: 'Ahmedabad', address: 'B/7, Aryan Bungalows, Opp. Kargil Petrol Pump, Chankyapuri Cross Road, Sola, Ahmedabad.', phone: '+91 90238 44259', hours: 'Mon–Sat 10AM–8PM, Sun 11AM–6PM', flagship: true }
+  { city: 'Ahmedabad', address: 'B/7, Aryan Bungalows, Opp. Kargil Petrol Pump, Chankyapuri Cross Road, Sola, Ahmedabad.', phone: '+91 77788 67131', hours: 'Mon–Sat 10AM–8PM, Sun 11AM–6PM', flagship: true }
   
 ];
 
