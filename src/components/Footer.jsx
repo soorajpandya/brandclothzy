@@ -161,9 +161,12 @@ export default function Footer() {
 
         {/* Bottom Bar */}
         <div className="py-6 border-t border-neutral-800/80 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
-          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 text-[11px] text-neutral-400 font-light">
+          <div className="flex flex-col sm:flex-row flex-wrap items-center gap-2 sm:gap-3 text-[11px] text-neutral-400 font-light">
             <p>&copy; {new Date().getFullYear()} BrandClothzy. All rights reserved.</p>
             <span className="hidden sm:inline text-neutral-600">•</span>
+            <span className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-[10px] tracking-wider text-neutral-400">
+              CIN: U62012GJ2023PTC145295
+            </span>
             <span className="px-2 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-[10px] tracking-wider text-neutral-400">
               GSTIN: 24AALCB9972G1Z9
             </span>
