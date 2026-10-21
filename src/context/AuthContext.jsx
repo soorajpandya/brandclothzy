@@ -10,6 +10,7 @@ import {
 } from 'firebase/auth';
 import { ref as dbRef, set, get, update } from 'firebase/database';
 import { auth, googleProvider, db } from '../firebase';
+import { triggerEmail } from '../utils/mailer';
 
 const AuthContext = createContext(null);
 
@@ -51,6 +52,15 @@ async function syncUserProfile(user, extra = {}) {
         created_at: new Date().toISOString(),
         last_login: new Date().toISOString(),
       });
+
+      // Dispatch welcome email on new account registration (Non-blocking)
+      if (user.email) {
+        triggerEmail({
+          to: user.email,
+          type: 'welcome',
+          name: extra.name || user.displayName || 'Valued Member',
+        });
+      }
     } else {
       await update(userRef, {
         last_login: new Date().toISOString(),
@@ -101,6 +111,14 @@ export function AuthProvider({ children }) {
       if (name && auth.currentUser) {
         await updateProfile(auth.currentUser, { displayName: name });
       }
+
+      // Always dispatch welcome email immediately upon successful registration
+      triggerEmail({
+        to: email,
+        type: 'welcome',
+        name: name || 'Valued Member',
+      });
+
       await syncUserProfile(res.user, { name });
       setUser({
         uid: res.user.uid,
