@@ -25,7 +25,7 @@ export default function Checkout() {
     visibleSubtotal,
   } = useCart();
   const { addToast } = useUI();
-  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword } = useAuth();
+  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword, logout } = useAuth();
   const { createOrder } = useMarketplace();
   const [step, setStep] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -53,9 +53,9 @@ export default function Checkout() {
   const [shippingErrors, setShippingErrors] = useState({});
   const [pincodeLoading, setPincodeLoading] = useState(false);
 
-  // Determine initial step and pre-fill from Google profile
+  // Sync checkout step with user authentication state.
+  // If user logs out anywhere (Navbar or Checkout), immediately redirect to Sign In / Create Account ('identify')
   useEffect(() => {
-    if (step !== null) return;
     if (user) {
       const nameParts = (user.name || '').split(' ');
       setShippingForm((prev) => ({
@@ -64,11 +64,13 @@ export default function Checkout() {
         lastName: prev.lastName || nameParts.slice(1).join(' ') || '',
         email: prev.email || user.email || '',
       }));
-      setStep('shipping');
+      if (step === null || step === 'identify') {
+        setStep('shipping');
+      }
     } else {
       setStep('identify');
     }
-  }, [user, step]);
+  }, [user]);
 
   // Fire InitiateCheckout once when items are present
   useEffect(() => {
@@ -644,6 +646,26 @@ export default function Checkout() {
           <div className={step === 'shipping' ? 'lg:col-span-2' : ''}>
             {step === 'shipping' && (
               <div className="animate-fade-in">
+                {/* Signed In User Banner */}
+                {user && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 mb-6 bg-luxury-pearl border border-neutral-200/80 text-xs">
+                    <div className="flex items-center gap-2 text-neutral-600">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      <span>Signed in as <strong className="text-luxury-charcoal font-medium">{user.email || user.name || 'Customer'}</strong></span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await logout();
+                        addToast('Logged out. Please sign in or create an account to continue.', 'info');
+                      }}
+                      className="text-luxury-gold hover:underline font-medium text-left sm:text-right text-[11px] tracking-wider uppercase"
+                    >
+                      Sign Out / Switch Account →
+                    </button>
+                  </div>
+                )}
+
                 <h2 className="text-[10px] uppercase tracking-[0.25em] font-semibold text-luxury-taupe mb-6">
                   Shipping Information
                 </h2>
