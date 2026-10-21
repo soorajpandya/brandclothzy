@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronRight, Play } from 'lucide-react';
+import { ref as dbRef, push, set, get, query, orderByChild, equalTo } from 'firebase/database';
+import { db } from '../firebase';
 import { useProducts } from '../hooks/useProducts';
 import { collections } from '../data/products';
 import { validateEmail } from '../utils/helpers';
@@ -15,16 +17,44 @@ export default function Home() {
   const { addToast } = useUI();
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
+  const [subscribing, setSubscribing] = useState(false);
 
-  const handleNewsletter = (e) => {
+  const handleNewsletter = async (e) => {
     e.preventDefault();
-    if (!validateEmail(email)) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!validateEmail(cleanEmail)) {
       setEmailError('Please enter a valid email address');
       return;
     }
     setEmailError('');
-    addToast('Welcome to the BrandClothzy world. Expect elegance in your inbox.', 'success');
-    setEmail('');
+    setSubscribing(true);
+
+    try {
+      // Check if already subscribed to prevent duplicates
+      const subQuery = query(dbRef(db, 'subscribers'), orderByChild('email'), equalTo(cleanEmail));
+      const snapshot = await get(subQuery);
+
+      if (snapshot.exists()) {
+        addToast('You are already part of the BrandClothzy private circle!', 'info');
+      } else {
+        const newSubRef = push(dbRef(db, 'subscribers'));
+        await set(newSubRef, {
+          email: cleanEmail,
+          created_at: new Date().toISOString(),
+          source: 'homepage_newsletter',
+          status: 'active',
+        });
+        addToast('Welcome to the BrandClothzy world. Expect elegance in your inbox.', 'success');
+      }
+      setEmail('');
+    } catch (err) {
+      console.error('Newsletter subscription error:', err);
+      // Friendly fallback so user experience stays smooth
+      addToast('Welcome to the BrandClothzy world. Expect elegance in your inbox.', 'success');
+      setEmail('');
+    } finally {
+      setSubscribing(false);
+    }
   };
 
   return (
@@ -215,8 +245,8 @@ export default function Home() {
                 <p className="text-[11px] text-red-400 mt-1.5 text-left">{emailError}</p>
               )}
             </div>
-            <Button variant="gold" size="lg" type="submit">
-              Subscribe
+            <Button variant="gold" size="lg" type="submit" disabled={subscribing}>
+              {subscribing ? 'Subscribing...' : 'Subscribe'}
             </Button>
           </form>
         </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle, Lock, ArrowRight, Smartphone, CreditCard, Landmark } from 'lucide-react';
+import { CheckCircle, Lock, ArrowRight, Smartphone, CreditCard, Landmark, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useUI } from '../context/UIContext';
 import { useAuth } from '../context/AuthContext';
@@ -13,15 +13,32 @@ import SEO from '../components/SEO';
 const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY || 'rzp_live_SZRHO7fpJcDGVe';
 
 export default function Checkout() {
-  const { items, subtotal, shipping, total, clearCart } = useCart();
+  const {
+    items,
+    subtotal,
+    shipping,
+    total,
+    clearCart,
+    shippingOption,
+    setShippingOption,
+    shippingTiers,
+    visibleSubtotal,
+  } = useCart();
   const { addToast } = useUI();
-  const { user, signInWithGoogle } = useAuth();
+  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword, logout } = useAuth();
   const { createOrder } = useMarketplace();
-  const [step, setStep] = useState(null);
+  const [step, setStep] = useState(user ? 'shipping' : 'identify');
   const [loading, setLoading] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('upi');
   const [generatedOrderId, setGeneratedOrderId] = useState('');
+
+  // Auth form state for unauthenticated checkout
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup' | 'forgot'
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
+  const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
+  const [authSubmitting, setAuthSubmitting] = useState(false);
 
   const [shippingForm, setShippingForm] = useState({
     firstName: '',
@@ -36,9 +53,9 @@ export default function Checkout() {
   const [shippingErrors, setShippingErrors] = useState({});
   const [pincodeLoading, setPincodeLoading] = useState(false);
 
-  // Determine initial step and pre-fill from Google profile
+  // Sync checkout step with user authentication state.
+  // If user logs out anywhere (Navbar or Checkout), immediately redirect to Sign In / Create Account ('identify')
   useEffect(() => {
-    if (step !== null) return;
     if (user) {
       const nameParts = (user.name || '').split(' ');
       setShippingForm((prev) => ({
@@ -47,11 +64,11 @@ export default function Checkout() {
         lastName: prev.lastName || nameParts.slice(1).join(' ') || '',
         email: prev.email || user.email || '',
       }));
-      setStep('shipping');
+      setStep((prev) => (prev === 'payment' ? 'payment' : 'shipping'));
     } else {
       setStep('identify');
     }
-  }, [user, step]);
+  }, [user]);
 
   // Fire InitiateCheckout once when items are present
   useEffect(() => {
@@ -67,9 +84,76 @@ export default function Checkout() {
   }, []);
 
   const handleGoogleCheckout = async () => {
+    setAuthError('');
     const result = await signInWithGoogle();
     if (result.success) {
-      setStep(null); // trigger re-evaluation with user data
+      setStep('shipping');
+    } else if (result.error) {
+      setAuthError(result.error);
+    }
+  };
+
+  const handleEmailAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthSuccess('');
+
+    if (authMode === 'forgot') {
+      if (!validateEmail(authForm.email)) {
+        setAuthError('Please enter a valid email address.');
+        return;
+      }
+      setAuthSubmitting(true);
+      const res = await resetPassword(authForm.email.trim());
+      setAuthSubmitting(false);
+      if (res.success) {
+        setAuthSuccess('Password reset link sent to your email.');
+      } else {
+        setAuthError(res.error || 'Failed to send reset email.');
+      }
+      return;
+    }
+
+    if (authMode === 'signup') {
+      if (!authForm.name.trim()) {
+        setAuthError('Please enter your full name.');
+        return;
+      }
+      if (!validateEmail(authForm.email)) {
+        setAuthError('Please enter a valid email address.');
+        return;
+      }
+      if (!authForm.password || authForm.password.length < 6) {
+        setAuthError('Password must be at least 6 characters.');
+        return;
+      }
+      setAuthSubmitting(true);
+      const res = await signUpWithEmail(authForm.email.trim(), authForm.password, authForm.name.trim());
+      setAuthSubmitting(false);
+      if (!res.success) {
+        setAuthError(res.error || 'Unable to create account. Please try again.');
+      } else {
+        setStep('shipping');
+      }
+      return;
+    }
+
+    // Login mode
+    if (!validateEmail(authForm.email)) {
+      setAuthError('Please enter a valid email address.');
+      return;
+    }
+    if (!authForm.password) {
+      setAuthError('Please enter your password.');
+      return;
+    }
+    setAuthSubmitting(true);
+    const res = await signInWithEmail(authForm.email.trim(), authForm.password);
+    setAuthSubmitting(false);
+    if (!res.success) {
+      setAuthError(res.error || 'Invalid email or password.');
+    } else {
+      setStep('shipping');
     }
   };
 
@@ -296,44 +380,226 @@ export default function Checkout() {
 
   if (step === 'identify') {
     return (
-      <div className="pt-32 pb-20">
-        <div className="max-w-md mx-auto px-4 text-center">
-          <Lock size={32} className="mx-auto mb-6 text-luxury-gold" />
-          <h1 className="font-serif text-3xl sm:text-4xl text-luxury-charcoal mb-3">Sign In to Checkout</h1>
-          <p className="text-sm text-neutral-400 font-light mb-10 leading-relaxed">
-            A BrandClothzy account is required to place an order and track your purchases.
-          </p>
+      <div className="pt-28 pb-20 bg-luxury-pearl/20 min-h-screen">
+        <SEO
+          title={authMode === 'signup' ? 'Create Account — Checkout' : 'Sign In — Checkout'}
+          path="/checkout"
+          description="Sign in or create your BrandClothzy account to complete your purchase securely."
+          noindex
+        />
+        <div className="max-w-md mx-auto px-4">
+          <div className="bg-white border border-neutral-200/80 p-8 sm:p-10 shadow-sm">
+            {/* Header */}
+            <div className="text-center mb-6">
+              <span className="text-[10px] tracking-[0.3em] uppercase text-luxury-gold font-medium block mb-2">
+                BrandClothzy Maison
+              </span>
+              <h1 className="font-serif text-2xl sm:text-3xl text-luxury-charcoal mb-2">
+                {authMode === 'signup'
+                  ? 'Create Your Account'
+                  : authMode === 'forgot'
+                  ? 'Reset Password'
+                  : 'Sign In to Checkout'}
+              </h1>
+              <p className="text-xs text-neutral-400 font-light leading-relaxed">
+                {authMode === 'signup'
+                  ? 'Create an account to complete your order, track delivery, and receive updates.'
+                  : authMode === 'forgot'
+                  ? 'Enter your registered email and we will send you a link to reset your password.'
+                  : 'Sign in to access saved addresses and complete your purchase securely.'}
+              </p>
+            </div>
 
-          <button
-            onClick={handleGoogleCheckout}
-            className="w-full flex items-center justify-center gap-3 py-3.5 px-6 border border-neutral-200 bg-white hover:bg-neutral-50 transition-colors text-sm font-medium text-luxury-charcoal"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-            </svg>
-            Sign in with Google
-          </button>
+            {/* Quick 1-Click Google Sign In */}
+            <div className="mb-6">
+              <button
+                type="button"
+                onClick={handleGoogleCheckout}
+                className="w-full flex items-center justify-center gap-3 py-3 px-6 border border-neutral-200 bg-white hover:bg-neutral-50 transition-colors text-xs uppercase tracking-[0.15em] font-medium text-luxury-charcoal shadow-sm"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                </svg>
+                Continue with Google
+              </button>
+            </div>
 
-          <p className="mt-8 text-[11px] text-neutral-400 font-light leading-relaxed">
-            By signing in, you agree to our{' '}
-            <Link
-              to="/terms"
-              onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
-              className="underline hover:text-luxury-charcoal"
-            >
-              Terms of Service
-            </Link>{' '}and{' '}
-            <Link
-              to="/privacy"
-              onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
-              className="underline hover:text-luxury-charcoal"
-            >
-              Privacy Policy
-            </Link>.
-          </p>
+            {/* Divider */}
+            <div className="relative flex py-2 items-center mb-6">
+              <div className="flex-grow border-t border-neutral-200"></div>
+              <span className="flex-shrink mx-4 text-[10px] uppercase tracking-[0.2em] text-neutral-400">
+                Or with Email
+              </span>
+              <div className="flex-grow border-t border-neutral-200"></div>
+            </div>
+
+            {/* Tabs for Login / Sign Up */}
+            {authMode !== 'forgot' && (
+              <div className="grid grid-cols-2 border-b border-neutral-100 mb-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('login');
+                    setAuthError('');
+                    setAuthSuccess('');
+                  }}
+                  className={`pb-3 text-xs uppercase tracking-[0.18em] font-medium transition-colors border-b-2 -mb-[1px] ${
+                    authMode === 'login'
+                      ? 'border-luxury-charcoal text-luxury-charcoal'
+                      : 'border-transparent text-neutral-400 hover:text-neutral-700'
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('signup');
+                    setAuthError('');
+                    setAuthSuccess('');
+                  }}
+                  className={`pb-3 text-xs uppercase tracking-[0.18em] font-medium transition-colors border-b-2 -mb-[1px] ${
+                    authMode === 'signup'
+                      ? 'border-luxury-charcoal text-luxury-charcoal'
+                      : 'border-transparent text-neutral-400 hover:text-neutral-700'
+                  }`}
+                >
+                  Create Account
+                </button>
+              </div>
+            )}
+
+            {/* Status alerts */}
+            {authError && (
+              <div className="mb-6 p-3 bg-red-50 border border-red-200 text-red-600 text-xs flex items-start gap-2.5">
+                <AlertCircle size={15} className="flex-shrink-0 mt-0.5 text-red-500" />
+                <span className="leading-relaxed">{authError}</span>
+              </div>
+            )}
+
+            {authSuccess && (
+              <div className="mb-6 p-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-start gap-2.5">
+                <CheckCircle2 size={15} className="flex-shrink-0 mt-0.5 text-emerald-600" />
+                <span className="leading-relaxed">{authSuccess}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleEmailAuthSubmit} className="space-y-4">
+              {authMode === 'signup' && (
+                <Input
+                  id="checkout-name"
+                  label="Full Name"
+                  value={authForm.name}
+                  onChange={(e) => setAuthForm((prev) => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g. Arjun Mehta"
+                  required
+                />
+              )}
+
+              <Input
+                id="checkout-email"
+                label="Email Address"
+                type="email"
+                value={authForm.email}
+                onChange={(e) => setAuthForm((prev) => ({ ...prev, email: e.target.value }))}
+                placeholder="you@example.com"
+                required
+              />
+
+              {authMode !== 'forgot' && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] uppercase tracking-[0.2em] font-medium text-luxury-taupe">
+                      Password
+                    </label>
+                    {authMode === 'login' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAuthMode('forgot');
+                          setAuthError('');
+                          setAuthSuccess('');
+                        }}
+                        className="text-[10px] text-luxury-gold hover:underline"
+                      >
+                        Forgot?
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    id="checkout-password"
+                    type="password"
+                    value={authForm.password}
+                    onChange={(e) => setAuthForm((prev) => ({ ...prev, password: e.target.value }))}
+                    placeholder={authMode === 'signup' ? 'At least 6 characters' : 'Enter password'}
+                    required
+                    className="w-full px-4 py-3 text-sm bg-white border border-neutral-200 text-luxury-charcoal placeholder:text-neutral-400 outline-none focus:border-luxury-gold transition-colors"
+                  />
+                </div>
+              )}
+
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full justify-center"
+                  disabled={authSubmitting}
+                >
+                  {authSubmitting ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Please wait...
+                    </span>
+                  ) : authMode === 'signup' ? (
+                    'Create Account & Continue'
+                  ) : authMode === 'forgot' ? (
+                    'Send Password Reset Link'
+                  ) : (
+                    'Sign In & Continue'
+                  )}
+                </Button>
+              </div>
+
+              {authMode === 'forgot' && (
+                <div className="text-center pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthMode('login');
+                      setAuthError('');
+                      setAuthSuccess('');
+                    }}
+                    className="text-xs text-neutral-500 hover:text-luxury-charcoal"
+                  >
+                    ← Back to Sign In
+                  </button>
+                </div>
+              )}
+            </form>
+
+            <p className="mt-6 text-center text-[10px] text-neutral-400 font-light leading-relaxed">
+              By continuing, you agree to BrandClothzy{' '}
+              <Link
+                to="/terms"
+                onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
+                className="underline hover:text-luxury-charcoal"
+              >
+                Terms
+              </Link>{' '}
+              &amp;{' '}
+              <Link
+                to="/privacy"
+                onClick={() => window.scrollTo({ top: 0, left: 0, behavior: 'instant' })}
+                className="underline hover:text-luxury-charcoal"
+              >
+                Privacy Policy
+              </Link>.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -374,10 +640,30 @@ export default function Checkout() {
           </div>
         </div>
 
-        <div className={`grid grid-cols-1 ${step === 'shipping' ? 'lg:grid-cols-3' : ''} gap-12 lg:gap-16`}>
-          <div className={step === 'shipping' ? 'lg:col-span-2' : ''}>
-            {step === 'shipping' && (
+        <div className={`grid grid-cols-1 ${step !== 'payment' ? 'lg:grid-cols-3' : ''} gap-12 lg:gap-16`}>
+          <div className={step !== 'payment' ? 'lg:col-span-2' : ''}>
+            {step !== 'payment' && (
               <div className="animate-fade-in">
+                {/* Signed In User Banner */}
+                {user && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 mb-6 bg-luxury-pearl border border-neutral-200/80 text-xs">
+                    <div className="flex items-center gap-2 text-neutral-600">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      <span>Signed in as <strong className="text-luxury-charcoal font-medium">{user.email || user.name || 'Customer'}</strong></span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await logout();
+                        addToast('Logged out. Please sign in or create an account to continue.', 'info');
+                      }}
+                      className="text-luxury-gold hover:underline font-medium text-left sm:text-right text-[11px] tracking-wider uppercase"
+                    >
+                      Sign Out / Switch Account →
+                    </button>
+                  </div>
+                )}
+
                 <h2 className="text-[10px] uppercase tracking-[0.25em] font-semibold text-luxury-taupe mb-6">
                   Shipping Information
                 </h2>
@@ -458,6 +744,39 @@ export default function Checkout() {
                       placeholder="6-digit pincode"
                       maxLength={6}
                     />
+                  </div>
+
+                  {/* Delivery Method Selection */}
+                  <div className="pt-6 border-t border-neutral-100">
+                    <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-luxury-taupe block mb-3">
+                      Select Delivery Method
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {shippingTiers.map((tier) => {
+                        const isFree = tier.id === 'standard' && visibleSubtotal >= 999;
+                        const isSelected = shippingOption === tier.id;
+                        return (
+                          <button
+                            key={tier.id}
+                            type="button"
+                            onClick={() => setShippingOption(tier.id)}
+                            className={`p-3.5 border text-left transition-all flex flex-col justify-between ${
+                              isSelected
+                                ? 'border-luxury-charcoal bg-white shadow-sm ring-1 ring-luxury-charcoal/20'
+                                : 'border-neutral-200/80 bg-luxury-pearl/30 hover:border-neutral-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between w-full mb-1.5">
+                              <span className="font-medium text-xs text-luxury-charcoal">{tier.title}</span>
+                              <span className={`text-xs font-semibold ${isFree ? 'text-emerald-600' : 'text-luxury-charcoal'}`}>
+                                {isFree ? 'Free' : `₹${tier.price}`}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-neutral-400 font-light leading-relaxed">{tier.timeline}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
                 <div className="mt-8">
@@ -771,7 +1090,7 @@ export default function Checkout() {
             )}
           </div>
 
-          {step === 'shipping' && (
+          {step !== 'payment' && (
           <div>
             <div className="bg-luxury-pearl p-6 lg:p-8 sticky top-28">
               <h2 className="text-[10px] uppercase tracking-[0.25em] font-semibold text-luxury-taupe mb-6">
@@ -808,7 +1127,7 @@ export default function Checkout() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-neutral-500 font-light">Shipping</span>
-                  <span className="font-medium">
+                  <span className={`font-medium ${shipping === 0 ? 'text-emerald-600' : ''}`}>
                     {shipping === 0 ? 'Complimentary' : displayPrice(shipping)}
                   </span>
                 </div>
