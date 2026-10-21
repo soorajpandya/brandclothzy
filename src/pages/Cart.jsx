@@ -1,4 +1,4 @@
-﻿import { Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Minus, Plus, X, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { displayPrice } from '../utils/helpers';
@@ -6,7 +6,19 @@ import Button from '../components/Button';
 import SEO from '../components/SEO';
 
 export default function Cart() {
-  const { items, removeItem, updateQuantity, itemCount, subtotal, shipping, total } = useCart();
+  const {
+    items,
+    removeItem,
+    updateQuantity,
+    itemCount,
+    subtotal,
+    shipping,
+    total,
+    shippingOption,
+    setShippingOption,
+    shippingTiers,
+    visibleSubtotal,
+  } = useCart();
 
   if (items.length === 0) {
     return (
@@ -140,15 +152,63 @@ export default function Cart() {
                   <span className="text-neutral-500 font-light">Subtotal</span>
                   <span className="font-medium">{displayPrice(subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
+
+                {/* Delivery Options Selector */}
+                <div className="pt-2 pb-1">
+                  <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-luxury-taupe block mb-2.5">
+                    Select Delivery Method
+                  </label>
+                  <div className="space-y-2">
+                    {shippingTiers.map((tier) => {
+                      const isFree = tier.id === 'standard' && visibleSubtotal >= 999;
+                      const isSelected = shippingOption === tier.id;
+                      return (
+                        <button
+                          key={tier.id}
+                          type="button"
+                          onClick={() => setShippingOption(tier.id)}
+                          className={`w-full text-left p-3 border transition-all text-xs flex items-center justify-between gap-3 ${
+                            isSelected
+                              ? 'border-luxury-charcoal bg-white shadow-sm'
+                              : 'border-neutral-200/80 bg-white/50 hover:border-neutral-400'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                                isSelected ? 'border-luxury-charcoal' : 'border-neutral-300'
+                              }`}
+                            >
+                              {isSelected && <span className="w-2 h-2 rounded-full bg-luxury-charcoal" />}
+                            </span>
+                            <div>
+                              <p className="font-medium text-luxury-charcoal">{tier.title}</p>
+                              <p className="text-[11px] text-neutral-400 font-light">{tier.timeline}</p>
+                            </div>
+                          </div>
+                          <span className={`font-medium flex-shrink-0 ${isFree ? 'text-emerald-600' : 'text-luxury-charcoal'}`}>
+                            {isFree ? 'Free' : `₹${tier.price}`}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex justify-between text-sm pt-2">
                   <span className="text-neutral-500 font-light">Shipping</span>
-                  <span className="font-medium">
+                  <span className={`font-medium ${shipping === 0 ? 'text-emerald-600' : ''}`}>
                     {shipping === 0 ? 'Complimentary' : displayPrice(shipping)}
                   </span>
                 </div>
-                {shipping > 0 && (
+
+                {visibleSubtotal >= 999 ? (
+                  <p className="text-[11px] text-emerald-700 font-light">
+                    ✓ Qualified for Free Standard Shipping (orders above ₹999)
+                  </p>
+                ) : (
                   <p className="text-[11px] text-luxury-gold font-light">
-                    Free shipping on orders above ₹999
+                    Free Standard Shipping on orders above ₹999
                   </p>
                 )}
               </div>
