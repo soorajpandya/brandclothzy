@@ -9,8 +9,9 @@ import { displayPrice, validateEmail, validatePhone, validatePincode, validateRe
 import Input from '../components/Input';
 import Button from '../components/Button';
 import SEO from '../components/SEO';
+import { triggerEmail } from '../utils/mailer';
 
-const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY || 'rzp_live_SZRHO7fpJcDGVe';
+const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY;
 
 export default function Checkout() {
   const {
@@ -232,7 +233,11 @@ export default function Checkout() {
 
   const handlePay = async (method) => {
     setLoading(true);
+
     try {
+      if (!RAZORPAY_KEY) {
+        throw new Error('Razorpay Key not found in environment (VITE_RAZORPAY_KEY). Please verify .env');
+      }
       const loaded = await loadRazorpayScript();
       if (!loaded) throw new Error('Payment gateway failed to load');
 
@@ -281,6 +286,17 @@ export default function Checkout() {
             console.error('Order save failed:', err);
             setGeneratedOrderId(paymentId);
           }
+
+          // Trigger automated order confirmation email (Non-blocking)
+          triggerEmail({
+            to: shippingForm.email,
+            type: 'order_confirmed',
+            name: `${shippingForm.firstName} ${shippingForm.lastName}`,
+            data: {
+              orderId: paymentId,
+              total: Math.round(total * 1.4),
+            },
+          });
           if (typeof window.fbq === 'function') {
             window.fbq('track', 'Purchase', {
               value: Math.round(total * 1.4),
@@ -312,8 +328,9 @@ export default function Checkout() {
         setLoading(false);
       });
       rzp.open();
-    } catch {
-      addToast('Unable to initiate payment. Please try again.', 'error');
+    } catch (err) {
+      console.error('Payment error:', err);
+      addToast(err?.message || 'Unable to initiate payment. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -809,6 +826,7 @@ export default function Checkout() {
                     {shippingForm.pincode}
                   </p>
                 </div>
+
 
                 {/* Payment Method Tabs */}
                 <div className="flex border border-neutral-200 mb-8">
