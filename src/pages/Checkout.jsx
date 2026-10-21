@@ -27,7 +27,7 @@ export default function Checkout() {
   const { addToast } = useUI();
   const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword, logout } = useAuth();
   const { createOrder } = useMarketplace();
-  const [step, setStep] = useState(null);
+  const [step, setStep] = useState(user ? 'shipping' : 'identify');
   const [loading, setLoading] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('upi');
@@ -64,9 +64,7 @@ export default function Checkout() {
         lastName: prev.lastName || nameParts.slice(1).join(' ') || '',
         email: prev.email || user.email || '',
       }));
-      if (step === null || step === 'identify') {
-        setStep('shipping');
-      }
+      setStep((prev) => (prev === 'payment' ? 'payment' : 'shipping'));
     } else {
       setStep('identify');
     }
@@ -89,7 +87,7 @@ export default function Checkout() {
     setAuthError('');
     const result = await signInWithGoogle();
     if (result.success) {
-      setStep(null); // trigger re-evaluation with user data
+      setStep('shipping');
     } else if (result.error) {
       setAuthError(result.error);
     }
@@ -135,7 +133,7 @@ export default function Checkout() {
       if (!res.success) {
         setAuthError(res.error || 'Unable to create account. Please try again.');
       } else {
-        setStep(null);
+        setStep('shipping');
       }
       return;
     }
@@ -155,7 +153,7 @@ export default function Checkout() {
     if (!res.success) {
       setAuthError(res.error || 'Invalid email or password.');
     } else {
-      setStep(null);
+      setStep('shipping');
     }
   };
 
@@ -642,9 +640,9 @@ export default function Checkout() {
           </div>
         </div>
 
-        <div className={`grid grid-cols-1 ${step === 'shipping' ? 'lg:grid-cols-3' : ''} gap-12 lg:gap-16`}>
-          <div className={step === 'shipping' ? 'lg:col-span-2' : ''}>
-            {step === 'shipping' && (
+        <div className={`grid grid-cols-1 ${step !== 'payment' ? 'lg:grid-cols-3' : ''} gap-12 lg:gap-16`}>
+          <div className={step !== 'payment' ? 'lg:col-span-2' : ''}>
+            {step !== 'payment' && (
               <div className="animate-fade-in">
                 {/* Signed In User Banner */}
                 {user && (
@@ -1092,7 +1090,7 @@ export default function Checkout() {
             )}
           </div>
 
-          {step === 'shipping' && (
+          {step !== 'payment' && (
           <div>
             <div className="bg-luxury-pearl p-6 lg:p-8 sticky top-28">
               <h2 className="text-[10px] uppercase tracking-[0.25em] font-semibold text-luxury-taupe mb-6">
