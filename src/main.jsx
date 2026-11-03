@@ -10,6 +10,10 @@ import { UIProvider } from './context/UIContext';
 import { SellerProvider } from './context/SellerContext';
 import { MarketplaceProvider } from './context/MarketplaceContext';
 import './index.css';
+import { initAnalytics } from './utils/analytics';
+
+// Loads GA4 / Meta Pixel / Clarity only if the visitor has accepted cookies.
+initAnalytics();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

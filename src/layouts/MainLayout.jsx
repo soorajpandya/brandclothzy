@@ -4,6 +4,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import ToastContainer from '../components/ToastContainer';
 import QuickView from '../components/QuickView';
+import CookieConsent from '../components/CookieConsent';
 
 export default function MainLayout({ children }) {
   const { pathname } = useLocation();
@@ -25,6 +26,7 @@ export default function MainLayout({ children }) {
       <Footer />
       <ToastContainer />
       <QuickView />
+      <CookieConsent />
     </div>
   );
 }

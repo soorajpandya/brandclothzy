@@ -7,6 +7,7 @@ import Input from '../components/Input';
 import { useUI } from '../context/UIContext';
 import { validateEmail, validatePhone, validateRequired } from '../utils/helpers';
 import SEO from '../components/SEO';
+import { track } from '../utils/analytics';
 
 export default function Contact() {
   const { addToast } = useUI();
@@ -49,9 +50,7 @@ export default function Contact() {
         'KIxperwBJSomUW96Z'
       );
       setSubmitted(true);
-      if (typeof window.fbq === 'function') {
-        window.fbq('track', 'Contact');
-      }
+      track('generate_lead', { method: 'contact_form' });
       addToast('Your message has been sent. Our concierge team will respond within 24 hours.', 'success');
     } catch {
       addToast('Failed to send message. Please try again or email us directly.', 'error');

@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { trackPageView } from './utils/analytics';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import MainLayout from './layouts/MainLayout';
 import { BCMonogram } from './components/BrandLogo';
@@ -42,10 +43,14 @@ function PageLoader() {
 
 function PixelPageTracker() {
   const location = useLocation();
+  const first = useRef(true);
   useEffect(() => {
-    if (typeof window.fbq === 'function') {
-      window.fbq('track', 'PageView');
+    // The landing page view is sent when the Pixel loads; count only later route changes here.
+    if (first.current) {
+      first.current = false;
+      return;
     }
+    trackPageView();
   }, [location.pathname]);
   return null;
 }

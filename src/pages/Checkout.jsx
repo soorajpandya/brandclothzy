@@ -9,6 +9,7 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import SEO from '../components/SEO';
 import { api } from '../utils/api';
+import { track, toItem, getAttribution, setServerPurchaseTracking } from '../utils/analytics';
 
 export default function Checkout() {
   const {
@@ -70,16 +71,9 @@ export default function Checkout() {
     }
   }, [user]);
 
-  // Fire InitiateCheckout once when items are present
+  // begin_checkout once when the checkout opens with items
   useEffect(() => {
-    if (items.length > 0 && typeof window.fbq === 'function') {
-      window.fbq('track', 'InitiateCheckout', {
-        content_ids: items.map((i) => i.id),
-        num_items: items.reduce((s, i) => s + i.quantity, 0),
-        value: total,
-        currency: 'INR',
-      });
-    }
+    if (items.length > 0) track('begin_checkout', { items: items.map((i) => toItem(i, { size: i.size, quantity: i.quantity })) });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -87,6 +81,7 @@ export default function Checkout() {
     setAuthError('');
     const result = await signInWithGoogle();
     if (result.success) {
+      track(result.isNewUser ? 'sign_up' : 'login', { method: 'Google' });
       setStep('shipping');
     } else if (result.error) {
       setAuthError(result.error);
@@ -133,6 +128,7 @@ export default function Checkout() {
       if (!res.success) {
         setAuthError(res.error || 'Unable to create account. Please try again.');
       } else {
+        track('sign_up', { method: 'Email' });
         setStep('shipping');
       }
       return;
@@ -153,6 +149,7 @@ export default function Checkout() {
     if (!res.success) {
       setAuthError(res.error || 'Invalid email or password.');
     } else {
+      track('login', { method: 'Email' });
       setStep('shipping');
     }
   };
@@ -211,9 +208,7 @@ export default function Checkout() {
 
   const handleShippingContinue = () => {
     if (validateShipping()) {
-      if (typeof window.fbq === 'function') {
-        window.fbq('track', 'AddPaymentInfo');
-      }
+      track('add_shipping_info', { shipping_tier: shippingOption, items: items.map((i) => toItem(i, { size: i.size, quantity: i.quantity })) });
       setStep('payment');
     }
   };
@@ -247,15 +242,15 @@ export default function Checkout() {
     setOrderPlaced(true);
     clearCart();
     addToast('Payment received — your order is confirmed!', 'success');
-    if (typeof window.fbq === 'function') {
-      window.fbq('track', 'Purchase', {
-        value: summary.total,
-        currency: 'INR',
-        content_ids: (summary.items || []).map((i) => i.productId),
-        content_type: 'product',
-        num_items: (summary.items || []).reduce((s, i) => s + i.quantity, 0),
-      });
-    }
+    const purchased = (summary.items || []).map((i) => ({
+      item_id: String(i.productId),
+      item_name: i.name,
+      ...(i.size ? { item_variant: i.size } : {}),
+      price: i.unitPrice,
+      quantity: i.quantity,
+    }));
+    // transaction_id = order ID: Meta de-duplicates this with the server-side purchase event.
+    track('purchase', { transaction_id: summary.orderId, value: summary.total, shipping: summary.shipping, items: purchased });
   };
 
   // Polls the server (which re-checks Razorpay) until the payment is settled.
@@ -286,6 +281,7 @@ export default function Checkout() {
 
   const handlePay = async (method) => {
     setLoading(true);
+    track('add_payment_info', { payment_type: method, items: items.map((i) => toItem(i, { size: i.size, quantity: i.quantity })) });
     try {
       const loaded = await loadRazorpayScript();
       if (!loaded) throw new Error('Payment gateway failed to load. Please check your connection.');
@@ -310,8 +306,12 @@ export default function Checkout() {
             state: shippingForm.state,
             pincode: shippingForm.pincode,
           },
+          // Only sent when the visitor accepted analytics cookies (consent flag is false otherwise).
+          analytics: getAttribution(),
         },
       });
+      // Browser skips its GA4 purchase only when the server can definitely report it.
+      setServerPurchaseTracking({ ga4: Boolean(checkout.serverTracking?.ga4 && getAttribution().gaClientId) });
       if (checkout.total !== total) {
         addToast(`Prices were updated. Your order total is ${formatPrice(checkout.total)}.`, 'info', 6000);
       }

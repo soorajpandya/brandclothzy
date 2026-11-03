@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useCallback, useMemo } from 'react';
-import { customerUnitPrice } from '../../shared/pricing.js';
+import { track, toItem } from '../utils/analytics';
 
 const WishlistContext = createContext();
 
@@ -26,15 +26,7 @@ export function WishlistProvider({ children }) {
 
   const toggleItem = useCallback((product) => {
     const isAdding = !state.items.some((item) => item.id === product.id);
-    if (isAdding && typeof window.fbq === 'function') {
-      window.fbq('track', 'AddToWishlist', {
-        content_ids: [product.id],
-        content_name: product.name,
-        content_type: 'product',
-        value: customerUnitPrice(product.price),
-        currency: 'INR',
-      });
-    }
+    if (isAdding) track('add_to_wishlist', { items: [toItem(product)] });
     dispatch({ type: 'TOGGLE_ITEM', payload: product });
   }, [state.items]);
 

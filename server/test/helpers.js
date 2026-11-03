@@ -102,11 +102,22 @@ export async function startServer({ seed = {}, env = {} } = {}) {
   const store = createMemoryStore(seed);
   const rzp = createFakeRazorpay();
   const mailer = createMailerSpy();
+  // Fake network for server-side tracking calls (GA4 / Meta).
+  const tracking = { calls: [], failNext: 0 };
+  const fetchImpl = async (url, init) => {
+    if (tracking.failNext > 0) {
+      tracking.failNext -= 1;
+      return { ok: false, status: 500 };
+    }
+    tracking.calls.push({ url, body: JSON.parse(init.body) });
+    return { ok: true, status: 204 };
+  };
   const app = createApp({
     config,
     store,
     razorpay: rzp.api,
     mailer,
+    fetchImpl,
     logger: silentLogger,
     verifyIdToken: async (t) => {
       if (!USERS[t]) throw new Error('bad token');
@@ -142,7 +153,7 @@ export async function startServer({ seed = {}, env = {} } = {}) {
     return call('POST', '/api/webhooks/razorpay', { raw, headers: { 'x-razorpay-signature': sign(secret, raw), 'x-razorpay-event-id': eventId } });
   };
 
-  return { base, call, sendWebhook, store, rzp, mailer, config, close: () => new Promise((r) => server.close(r)) };
+  return { base, call, sendWebhook, store, rzp, mailer, tracking, config, close: () => new Promise((r) => server.close(r)) };
 }
 
 export const CONTACT = { firstName: 'Alice', lastName: 'Shah', email: 'alice@example.com', phone: '9876543210' };

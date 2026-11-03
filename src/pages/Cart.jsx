@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Minus, Plus, X, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useCart, lineTotal, UNAVAILABLE_SHIPPING_TIERS, SHIPPING_UNAVAILABLE_MESSAGE } from '../context/CartContext';
@@ -5,6 +6,7 @@ import { useUI } from '../context/UIContext';
 import { displayPrice, formatPrice } from '../utils/helpers';
 import Button from '../components/Button';
 import SEO from '../components/SEO';
+import { track, toItem } from '../utils/analytics';
 
 export default function Cart() {
   const {
@@ -21,6 +23,11 @@ export default function Cart() {
     visibleSubtotal,
   } = useCart();
   const { addToast } = useUI();
+
+  useEffect(() => {
+    if (items.length) track('view_cart', { items: items.map((i) => toItem(i, { size: i.size, quantity: i.quantity })) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (items.length === 0) {
     return (
@@ -121,7 +128,10 @@ export default function Cart() {
                     </p>
 
                     <button
-                      onClick={() => removeItem(item.id, item.size, item.color)}
+                      onClick={() => {
+                        track('remove_from_cart', { items: [toItem(item, { size: item.size, quantity: item.quantity })] });
+                        removeItem(item.id, item.size, item.color);
+                      }}
                       className="self-start sm:self-auto p-1 text-neutral-300 hover:text-luxury-charcoal transition-colors"
                       aria-label={`Remove ${item.name}`}
                     >

@@ -6,6 +6,7 @@ import { useSeller } from '../../context/SellerContext';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import SEO from '../../components/SEO';
+import { track } from '../../utils/analytics';
 import { validatePAN, validateGST, validateCIN, validatePhone, validateURL, validatePincode } from '../../utils/helpers';
 
 const STEPS = [
@@ -96,9 +97,7 @@ export default function SellerApplication({ embedded }) {
     setSubmitting(true);
     try {
       await submitApplication(form);
-      if (typeof window.fbq === 'function') {
-        window.fbq('track', 'SubmitApplication');
-      }
+      track('seller_application');
       setSubmitted(true);
     } catch (err) {
       setErrors({ submit: err.message });

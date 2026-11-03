@@ -23,6 +23,7 @@ import { useSeller } from '../context/SellerContext';
 import { useMarketplace } from '../context/MarketplaceContext';
 import { formatPrice } from '../utils/helpers';
 import { orderDisplayAmounts } from '../../shared/pricing.js';
+import { track } from '../utils/analytics';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import SEO from '../components/SEO';
@@ -72,9 +73,8 @@ export default function Account() {
     setAuthSuccess('');
     const result = await signInWithGoogle();
     if (result.success) {
-      if (typeof window.fbq === 'function') {
-        window.fbq('track', 'CompleteRegistration');
-      }
+      // Only genuinely new accounts count as sign-ups; returning customers are logins.
+      track(result.isNewUser ? 'sign_up' : 'login', { method: 'Google' });
       navigate('/');
     } else if (result.error) {
       setAuthError(result.error);
@@ -134,9 +134,7 @@ export default function Account() {
       );
       setAuthSubmitting(false);
       if (res.success) {
-        if (typeof window.fbq === 'function') {
-          window.fbq('track', 'CompleteRegistration');
-        }
+        track('sign_up', { method: 'Email' });
       } else {
         setAuthError(res.error || 'Could not create account. Please try again.');
       }

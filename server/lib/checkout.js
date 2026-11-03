@@ -12,6 +12,7 @@ import {
   CURRENCY,
 } from '../../shared/pricing.js';
 import { resolveProduct } from './catalog.js';
+import { sanitizeAttribution } from './tracking.js';
 
 export class CheckoutError extends Error {
   constructor(code, message, status = 400) {
@@ -81,7 +82,7 @@ export function parseCartItems(rawItems) {
 /**
  * @returns {Promise<object>} the order record to persist (status awaiting_payment)
  */
-export async function buildOrder({ store, user, body, orderId, now = new Date() }) {
+export async function buildOrder({ store, user, body, orderId, now = new Date(), request = {} }) {
   const shippingOption = String(body?.shippingOption || 'standard');
   if (!isShippingTierAvailable(shippingOption)) {
     throw new CheckoutError('shipping_unavailable', 'That delivery method is not available right now. Please choose Standard Delivery.');
@@ -146,6 +147,8 @@ export async function buildOrder({ store, user, body, orderId, now = new Date() 
     payment_id: null,
     needs_review: false,
     status_history: [{ status: 'awaiting_payment', timestamp: iso, actor: 'system' }],
+    // Present only when the visitor accepted analytics cookies; used to report the verified purchase.
+    ...(sanitizeAttribution(body?.analytics, request) ? { attribution: sanitizeAttribution(body?.analytics, request) } : {}),
     created_at: iso,
     updated_at: iso,
   };

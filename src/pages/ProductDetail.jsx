@@ -7,6 +7,7 @@ import { useWishlist } from '../context/WishlistContext';
 import { useUI } from '../context/UIContext';
 import { displayPrice } from '../utils/helpers';
 import { customerUnitPrice } from '../../shared/pricing.js';
+import { track, toItem } from '../utils/analytics';
 import ProductCard from '../components/ProductCard';
 import Button from '../components/Button';
 import { ProductDetailSkeleton } from '../components/Skeleton';
@@ -37,15 +38,7 @@ export default function ProductDetail() {
       setSelectedSize('');
       setQuantity(1);
       setLoading(false);
-      if (found && typeof window.fbq === 'function') {
-        window.fbq('track', 'ViewContent', {
-          content_ids: [found.id],
-          content_name: found.name,
-          content_type: 'product',
-          value: customerUnitPrice(found.price),
-          currency: 'INR',
-        });
-      }
+      if (found) track('view_item', { items: [toItem(found)] });
     }, 400);
     return () => clearTimeout(timer);
   }, [id, getProductById]);
@@ -75,16 +68,7 @@ export default function ProductDetail() {
     for (let i = 0; i < quantity; i++) {
       addItem(product, selectedSize, '');
     }
-    if (typeof window.fbq === 'function') {
-      window.fbq('track', 'AddToCart', {
-        content_ids: [product.id],
-        content_name: product.name,
-        content_type: 'product',
-        value: customerUnitPrice(product.price) * quantity,
-        currency: 'INR',
-        num_items: quantity,
-      });
-    }
+    track('add_to_cart', { items: [toItem(product, { size: selectedSize, quantity })] });
     addToast(`${product.name} added to your bag`, 'success');
   };
 

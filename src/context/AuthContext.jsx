@@ -7,6 +7,7 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
   sendPasswordResetEmail,
+  getAdditionalUserInfo,
 } from 'firebase/auth';
 import { ref as dbRef, set, get, update } from 'firebase/database';
 import { auth, googleProvider, db } from '../firebase';
@@ -106,7 +107,7 @@ export function AuthProvider({ children }) {
       if (res.user) {
         await syncUserProfile(res.user);
       }
-      return { success: true };
+      return { success: true, isNewUser: Boolean(getAdditionalUserInfo(res)?.isNewUser) };
     } catch (error) {
       return { success: false, error: getAuthErrorMessage(error.code) || error.message };
     }

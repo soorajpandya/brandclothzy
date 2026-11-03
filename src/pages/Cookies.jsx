@@ -4,12 +4,11 @@ import { ChevronRight } from 'lucide-react';
 import Button from '../components/Button';
 import { useUI } from '../context/UIContext';
 import SEO from '../components/SEO';
+import { getConsent, setConsent } from '../utils/consent';
 
 const cookieTypes = [
-  { id: 'essential', label: 'Essential Cookies', description: 'Required for the website to function. These cannot be disabled. They include session management, shopping cart, and security cookies.', required: true },
-  { id: 'analytics', label: 'Analytics Cookies', description: 'Help us understand how visitors interact with our website. Data is anonymised and used solely to improve the user experience.' },
-  { id: 'marketing', label: 'Marketing Cookies', description: 'Used to deliver personalised advertisements and measure the effectiveness of our marketing campaigns across platforms.' },
-  { id: 'functional', label: 'Functional Cookies', description: 'Enable enhanced features such as remembering your preferences, language settings, and previously viewed products.' },
+  { id: 'essential', label: 'Essential Cookies', description: 'Required for the website to work: sign-in, your shopping bag, secure checkout and fraud prevention (Firebase, Razorpay). These cannot be turned off.', required: true },
+  { id: 'analytics', label: 'Analytics & Marketing', description: 'Google Analytics (how visitors use the site), Meta Pixel (measuring our Facebook and Instagram ads) and Microsoft Clarity (anonymous heatmaps and session recordings; form fields are masked). When you place an order with these on, we also report the verified purchase from our server to Google and Meta, using hashed contact details, so ad results stay accurate.' },
 ];
 
 export default function Cookies() {
@@ -17,12 +16,7 @@ export default function Cookies() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, []);
   const { addToast } = useUI();
-  const [preferences, setPreferences] = useState({
-    essential: true,
-    analytics: true,
-    marketing: false,
-    functional: true,
-  });
+  const [preferences, setPreferences] = useState(() => ({ essential: true, analytics: getConsent()?.analytics === true }));
 
   const toggle = (id) => {
     if (id === 'essential') return;
@@ -30,11 +24,13 @@ export default function Cookies() {
   };
 
   const handleSave = () => {
-    addToast('Cookie preferences saved successfully.', 'success');
+    setConsent(preferences.analytics);
+    addToast('Cookie preferences saved.', 'success');
   };
 
   const handleAcceptAll = () => {
-    setPreferences({ essential: true, analytics: true, marketing: true, functional: true });
+    setPreferences({ essential: true, analytics: true });
+    setConsent(true);
     addToast('All cookies accepted.', 'success');
   };
 

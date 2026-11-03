@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, MapPin, Clock, Phone } from 'lucide-react';
 import SEO from '../components/SEO';
+import { track } from '../utils/analytics';
 
 const stores = [
   { city: 'Ahmedabad', address: 'B/7, Aryan Bungalows, Opp. Kargil Petrol Pump, Chankyapuri Cross Road, Sola, Ahmedabad.', phone: '+91 77788 67131', hours: 'Mon–Sat 10AM–8PM, Sun 11AM–6PM', flagship: true }
@@ -10,9 +11,7 @@ const stores = [
 
 export default function StoreLocator() {
   useEffect(() => {
-    if (typeof window.fbq === 'function') {
-      window.fbq('track', 'FindLocation');
-    }
+    track('find_location');
   }, []);
 
   return (

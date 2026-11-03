@@ -3,6 +3,7 @@ import { SlidersHorizontal, X, ChevronDown, Grid3X3, LayoutGrid } from 'lucide-r
 import { useFilters } from '../hooks/useFilters';
 import { useProducts } from '../hooks/useProducts';
 import { genders, priceRanges } from '../data/products';
+import { track, toItem } from '../utils/analytics';
 import ProductCard from '../components/ProductCard';
 import { ProductCardSkeleton } from '../components/Skeleton';
 import Button from '../components/Button';
@@ -30,11 +31,25 @@ export default function Shop() {
   const [gridCols, setGridCols] = useState(4);
   const [loading] = useState(false);
 
+  // Report a search once the visitor stops typing (not on every keystroke).
   useEffect(() => {
-    if (searchQuery && typeof window.fbq === 'function') {
-      window.fbq('track', 'Search', { search_string: searchQuery });
-    }
+    if (!searchQuery?.trim()) return undefined;
+    const t = setTimeout(() => track('search', { search_term: searchQuery.trim() }), 1200);
+    return () => clearTimeout(t);
   }, [searchQuery]);
+
+  // Product list impressions (first 20 shown), once the filters settle.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (filteredProducts.length) {
+        track('view_item_list', {
+          item_list_name: searchQuery ? 'Search results' : 'Shop',
+          items: filteredProducts.slice(0, 20).map((p, index) => toItem(p, { index })),
+        });
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [filteredProducts, searchQuery]);
 
   // Show only categories relevant to the selected gender
   const visibleCategories = useMemo(() => {

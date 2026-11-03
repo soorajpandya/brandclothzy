@@ -19,6 +19,7 @@ import { buildOrder, cartFingerprint, CheckoutError, parseCartItems } from './li
 import { applyPayment, verifyCheckoutSignature, verifyWebhookSignature } from './lib/payments.js';
 import { sendOnce, welcomeEmail, orderConfirmationEmail } from './lib/emails.js';
 import { requireAuth, requireAdmin, rateLimit } from './lib/http.js';
+import { reportPurchase, trackingStatus } from './lib/tracking.js';
 
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const RZP_ID_RE = /^[A-Za-z0-9_]{6,40}$/;
@@ -61,7 +62,7 @@ async function withRetry(fn, { attempts = 3, delayMs = 150 } = {}) {
   throw lastErr;
 }
 
-export function createApp({ config, store, razorpay, verifyIdToken, mailer, logger = console }) {
+export function createApp({ config, store, razorpay, verifyIdToken, mailer, logger = console, fetchImpl = globalThis.fetch }) {
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -127,6 +128,7 @@ export function createApp({ config, store, razorpay, verifyIdToken, mailer, logg
       to: order.customer_email,
       build: () => orderConfirmationEmail(order),
     });
+    await reportPurchase({ order, config, store, fetchImpl, logger });
   }
 
   /** Captures an authorized payment when it matches the order exactly (server capture mode). */
@@ -233,13 +235,13 @@ export function createApp({ config, store, razorpay, verifyIdToken, mailer, logg
         if (attempt.fingerprint !== fingerprint) return res.status(409).json({ error: 'Your bag changed. Please try again.', code: 'idempotency_conflict' });
         const existing = await store.getOrder(attempt.order_id);
         if (existing && existing.razorpay_order_id && existing.status === 'awaiting_payment') {
-          return res.json({ ...orderSummary(existing), razorpayOrderId: existing.razorpay_order_id, amountPaise: existing.amount_paise, currency: existing.currency, keyId: config.razorpay.keyId });
+          return res.json({ ...orderSummary(existing), razorpayOrderId: existing.razorpay_order_id, amountPaise: existing.amount_paise, currency: existing.currency, keyId: config.razorpay.keyId, serverTracking: trackingStatus(config) });
         }
         if (existing && publicStatus(existing) === 'confirmed') return res.status(409).json({ error: 'This order has already been paid.', code: 'already_paid', orderId: existing.id });
       }
 
       const orderId = store.newOrderId();
-      const order = await buildOrder({ store, user: req.user, body: { ...req.body, items }, orderId });
+      const order = await buildOrder({ store, user: req.user, body: { ...req.body, items }, orderId, request: { ip: req.ip, userAgent: req.get('user-agent') } });
       await withRetry(() => store.putOrder(order));
 
       let rzpOrder;
@@ -270,6 +272,7 @@ export function createApp({ config, store, razorpay, verifyIdToken, mailer, logg
         amountPaise: order.amount_paise,
         currency: order.currency,
         keyId: config.razorpay.keyId,
+        serverTracking: trackingStatus(config),
       });
     } catch (err) {
       if (err instanceof CheckoutError) return res.status(err.status).json({ error: err.message, code: err.code });

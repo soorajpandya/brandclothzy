@@ -3,5 +3,7 @@ Allow: /
 Disallow: /cart
 Disallow: /checkout
 Disallow: /account
+Disallow: /dashboard
+Disallow: /seller/
 
 Sitemap: https://brandclothzy.com/sitemap.xml

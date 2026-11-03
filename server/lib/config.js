@@ -49,6 +49,9 @@ export function loadConfig(env = process.env) {
     );
   }
 
+  if (!(env.GA4_MEASUREMENT_ID && env.GA4_API_SECRET)) warnings.push('GA4 server-side purchase reporting is off (set GA4_MEASUREMENT_ID and GA4_API_SECRET).');
+  if (!(env.META_PIXEL_ID && env.META_CAPI_TOKEN)) warnings.push('Meta Conversions API is off (set META_PIXEL_ID and META_CAPI_TOKEN).');
+
   const smtpConfigured = Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
   if (!smtpConfigured) warnings.push('SMTP is not configured — transactional emails are logged, not sent.');
 
@@ -64,5 +67,12 @@ export function loadConfig(env = process.env) {
     firebase: { projectId: firebaseProjectId, databaseURL: firebaseDatabaseURL, serviceAccountJson: env.FIREBASE_SERVICE_ACCOUNT_JSON || '' },
     smtpConfigured,
     publicSiteUrl: env.PUBLIC_SITE_URL || 'https://brandclothzy.com',
+    tracking: {
+      ga4MeasurementId: env.GA4_MEASUREMENT_ID || '',
+      ga4ApiSecret: env.GA4_API_SECRET || '',
+      metaPixelId: env.META_PIXEL_ID || '',
+      metaCapiToken: env.META_CAPI_TOKEN || '',
+      metaGraphVersion: env.META_GRAPH_VERSION || 'v23.0',
+    },
   };
 }
