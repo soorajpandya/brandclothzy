@@ -1,0 +1,14 @@
+# Upload only what the API container needs (keeps secrets and the 26 MB of images out).
+*
+!Dockerfile
+!.dockerignore
+!shared/
+!shared/pricing.js
+!src/
+!src/data/
+!src/data/products.js
+!server/
+!server/**
+server/node_modules/
+server/.env
+server/test/

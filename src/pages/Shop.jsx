@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { SlidersHorizontal, X, ChevronDown, Grid3X3, LayoutGrid } from 'lucide-react';
 import { useFilters } from '../hooks/useFilters';
 import { useProducts } from '../hooks/useProducts';
-import { genders, colorOptions, priceRanges } from '../data/products';
+import { genders, priceRanges } from '../data/products';
 import ProductCard from '../components/ProductCard';
 import { ProductCardSkeleton } from '../components/Skeleton';
 import Button from '../components/Button';
@@ -12,13 +12,11 @@ export default function Shop() {
   const {
     selectedCategories,
     selectedGender,
-    selectedColors,
     priceRange,
     sortBy,
     searchQuery,
     toggleCategory,
     toggleGender,
-    toggleColor,
     setPriceRange,
     setSortBy,
     setSearchQuery,
@@ -203,24 +201,6 @@ export default function Shop() {
                     </label>
                   ))}
                 </FilterSection>
-
-                <FilterSection title="Color">
-                  <div className="flex flex-wrap gap-2">
-                    {colorOptions.map((color) => (
-                      <button
-                        key={color}
-                        onClick={() => toggleColor(color)}
-                        className={`px-3 py-1.5 text-xs border transition-colors ${
-                          selectedColors.includes(color)
-                            ? 'border-luxury-charcoal bg-luxury-charcoal text-white'
-                            : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'
-                        }`}
-                      >
-                        {color}
-                      </button>
-                    ))}
-                  </div>
-                </FilterSection>
               </div>
             </div>
           )}
@@ -276,23 +256,6 @@ export default function Shop() {
                         <span className="text-sm text-neutral-600">{range.label}</span>
                       </label>
                     ))}
-                  </FilterSection>
-                  <FilterSection title="Color">
-                    <div className="flex flex-wrap gap-2">
-                      {colorOptions.map((color) => (
-                        <button
-                          key={color}
-                          onClick={() => toggleColor(color)}
-                          className={`px-3 py-1.5 text-xs border transition-colors ${
-                            selectedColors.includes(color)
-                              ? 'border-luxury-charcoal bg-luxury-charcoal text-white'
-                              : 'border-neutral-200 text-neutral-600 hover:border-neutral-400'
-                          }`}
-                        >
-                          {color}
-                        </button>
-                      ))}
-                    </div>
                   </FilterSection>
                 </div>
                 <div className="mt-10 flex gap-3">

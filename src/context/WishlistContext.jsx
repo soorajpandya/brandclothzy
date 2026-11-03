@@ -1,4 +1,5 @@
 import { createContext, useContext, useReducer, useCallback, useMemo } from 'react';
+import { customerUnitPrice } from '../../shared/pricing.js';
 
 const WishlistContext = createContext();
 
@@ -30,7 +31,7 @@ export function WishlistProvider({ children }) {
         content_ids: [product.id],
         content_name: product.name,
         content_type: 'product',
-        value: product.price,
+        value: customerUnitPrice(product.price),
         currency: 'INR',
       });
     }

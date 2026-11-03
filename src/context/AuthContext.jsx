@@ -10,7 +10,7 @@ import {
 } from 'firebase/auth';
 import { ref as dbRef, set, get, update } from 'firebase/database';
 import { auth, googleProvider, db } from '../firebase';
-import { triggerEmail } from '../utils/mailer';
+import { api } from '../utils/api';
 
 const AuthContext = createContext(null);
 
@@ -53,13 +53,10 @@ async function syncUserProfile(user, extra = {}) {
         last_login: new Date().toISOString(),
       });
 
-      // Dispatch welcome email on new account registration (Non-blocking)
+      // Welcome email (non-blocking). The server sends it to the signed-in account's own
+      // email address, at most once per account.
       if (user.email) {
-        triggerEmail({
-          to: user.email,
-          type: 'welcome',
-          name: extra.name || user.displayName || 'Valued Member',
-        });
+        api('/api/emails/welcome', { method: 'POST' }).catch(() => {});
       }
     } else {
       await update(userRef, {
@@ -79,11 +76,21 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Admin role comes only from the 'admin' custom claim in the signed ID token
+        // (granted by server/scripts/set-admin-claim.js). It only controls what the UI shows —
+        // the database rules and API enforce it independently.
+        let isAdmin = false;
+        try {
+          isAdmin = (await firebaseUser.getIdTokenResult()).claims.admin === true;
+        } catch {
+          isAdmin = false;
+        }
         setUser({
           uid: firebaseUser.uid,
           name: firebaseUser.displayName || 'Customer',
           email: firebaseUser.email,
           photo: firebaseUser.photoURL,
+          isAdmin,
         });
       } else {
         setUser(null);
@@ -112,12 +119,6 @@ export function AuthProvider({ children }) {
         await updateProfile(auth.currentUser, { displayName: name });
       }
 
-      // Always dispatch welcome email immediately upon successful registration
-      triggerEmail({
-        to: email,
-        type: 'welcome',
-        name: name || 'Valued Member',
-      });
 
       await syncUserProfile(res.user, { name });
       setUser({

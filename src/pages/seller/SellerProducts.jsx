@@ -9,7 +9,28 @@ import { useMarketplace } from '../../context/MarketplaceContext';
 import Button from '../../components/Button';
 import Input from '../../components/Input';
 import SEO from '../../components/SEO';
-import { formatPrice } from '../../utils/helpers';
+import { formatPrice, displayPrice } from '../../utils/helpers';
+import { customerUnitPrice, MARKUP_PERCENT } from '../../../shared/pricing.js';
+
+/** Shows the seller exactly what customers will pay for the price they enter. */
+function PricePreview({ price, mrp, commissionRate }) {
+  const unit = customerUnitPrice(price);
+  if (!Number.isFinite(unit)) return null;
+  const mrpShown = customerUnitPrice(mrp);
+  return (
+    <div className="col-span-2 text-[11px] leading-relaxed bg-luxury-pearl/60 border border-neutral-200 px-3 py-2 text-neutral-600">
+      <p>
+        Your price <strong>{formatPrice(Number(price))}</strong> → customers see and pay <strong>{formatPrice(unit)}</strong>
+        {' '}(includes the {MARKUP_PERCENT}% platform markup).
+        {Number.isFinite(mrpShown) && mrpShown > unit ? <> MRP shown as {formatPrice(mrpShown)}.</> : null}
+      </p>
+      <p className="text-neutral-400">
+        Your payout is set by your seller agreement
+        {Number.isFinite(Number(commissionRate)) ? ` (commission rate on file: ${Number(commissionRate)}%)` : ''}.
+      </p>
+    </div>
+  );
+}
 
 const PRODUCT_STATUS_COLORS = {
   approved: 'bg-emerald-100 text-emerald-700',
@@ -80,7 +101,7 @@ export default function SellerProducts({ embedded }) {
         description: row.description || '',
         category: row.category,
         price: row.price,
-        originalPrice: row.mrp || row.original_price || '',
+        originalPrice: Number(row.mrp || row.original_price) > Number(row.price) ? (row.mrp || row.original_price) : '',
         sizes: row.sizes ? row.sizes.split('|').map(s => s.trim()).filter(Boolean) : [],
         colors: row.colors ? row.colors.split('|').map(c => c.trim()).filter(Boolean) : [],
         images: row.images ? row.images.split('|').map(u => u.trim()).filter(Boolean) : [],
@@ -209,6 +230,7 @@ export default function SellerProducts({ embedded }) {
         {showAddForm && (
           <AddProductForm
             brandName={sellerProfile.brand_name}
+            commissionRate={sellerProfile.financial?.commission_rate}
             onClose={() => setShowAddForm(false)}
             onSubmit={async (data, files) => {
               await addProduct(data, files);
@@ -221,6 +243,7 @@ export default function SellerProducts({ embedded }) {
         {/* Edit Product Modal */}
         {editingProduct && (
           <EditProductForm
+            commissionRate={sellerProfile.financial?.commission_rate}
             product={editingProduct}
             onClose={() => setEditingProduct(null)}
             onSubmit={async (data, newFiles, existingImages) => {
@@ -266,7 +289,7 @@ function ProductRow({ product, onEdit, onToggle }) {
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-400">
           <span>{product.category}</span>
-          <span>{formatPrice(product.price)}</span>
+          <span>Your price {formatPrice(product.price)} · Customers pay {displayPrice(product.price)}</span>
           <span>{product.images?.length || 0} images</span>
           <span>{new Date(product.created_at).toLocaleDateString()}</span>
         </div>
@@ -285,7 +308,7 @@ function ProductRow({ product, onEdit, onToggle }) {
   );
 }
 
-function AddProductForm({ brandName, onClose, onSubmit }) {
+function AddProductForm({ brandName, onClose, onSubmit, commissionRate }) {
   const [form, setForm] = useState({
     name: '', description: '', category: '', price: '', originalPrice: '',
     sizes: [], colors: [],
@@ -336,6 +359,7 @@ function AddProductForm({ brandName, onClose, onSubmit }) {
     if (!form.description.trim()) e.description = 'Required';
     if (!form.category) e.category = 'Required';
     if (!form.price || Number(form.price) <= 0) e.price = 'Valid price required';
+    if (form.originalPrice && Number(form.originalPrice) <= Number(form.price)) e.originalPrice = 'MRP must be higher than selling price';
     if (images.length < 1) e.images = 'At least 1 image required';
     if (form.sizes.length === 0) e.sizes = 'Select at least one size';
     setErrors(e);
@@ -383,10 +407,11 @@ function AddProductForm({ brandName, onClose, onSubmit }) {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Selling Price (₹) *" id="pPrice" type="number" value={form.price}
+            <Input label="Your Price (₹) *" id="pPrice" type="number" value={form.price}
               onChange={e => set('price', e.target.value)} error={errors.price} placeholder="e.g., 1499" />
             <Input label="MRP (₹)" id="pOriginal" type="number" value={form.originalPrice}
-              onChange={e => set('originalPrice', e.target.value)} placeholder="e.g., 2999" />
+              onChange={e => set('originalPrice', e.target.value)} error={errors.originalPrice} placeholder="e.g., 2999" />
+            <PricePreview price={form.price} mrp={form.originalPrice} commissionRate={commissionRate} />
           </div>
 
           {/* Sizes */}
@@ -454,7 +479,7 @@ function AddProductForm({ brandName, onClose, onSubmit }) {
   );
 }
 
-function EditProductForm({ product, onClose, onSubmit }) {
+function EditProductForm({ product, onClose, onSubmit, commissionRate }) {
   const [form, setForm] = useState({
     name: product.name || '',
     description: product.description || '',
@@ -517,6 +542,7 @@ function EditProductForm({ product, onClose, onSubmit }) {
     if (!form.description.trim()) e.description = 'Required';
     if (!form.category) e.category = 'Required';
     if (!form.price || Number(form.price) <= 0) e.price = 'Valid price required';
+    if (form.originalPrice && Number(form.originalPrice) <= Number(form.price)) e.originalPrice = 'MRP must be higher than selling price';
     if (totalImages < 1) e.images = 'At least 1 image required';
     if (form.sizes.length === 0) e.sizes = 'Select at least one size';
     setErrors(e);
@@ -564,10 +590,11 @@ function EditProductForm({ product, onClose, onSubmit }) {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Selling Price (₹) *" id="ePrice" type="number" value={form.price}
+            <Input label="Your Price (₹) *" id="ePrice" type="number" value={form.price}
               onChange={e => set('price', e.target.value)} error={errors.price} placeholder="e.g., 1499" />
             <Input label="MRP (₹)" id="eOriginal" type="number" value={form.originalPrice}
-              onChange={e => set('originalPrice', e.target.value)} placeholder="e.g., 2999" />
+              onChange={e => set('originalPrice', e.target.value)} error={errors.originalPrice} placeholder="e.g., 2999" />
+            <PricePreview price={form.price} mrp={form.originalPrice} commissionRate={commissionRate} />
           </div>
 
           {/* Sizes */}
@@ -635,6 +662,9 @@ function EditProductForm({ product, onClose, onSubmit }) {
             {errors.images && <p className="text-[10px] text-red-500 mt-1">{errors.images}</p>}
           </div>
 
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2">
+            Saving changes sends this product back for review. It will be hidden from the store until an admin approves it again.
+          </p>
           <div className="flex gap-3 pt-2">
             <Button onClick={handleSubmit} loading={submitting} className="flex-1">
               <Pencil size={14} /> Save Changes

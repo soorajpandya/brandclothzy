@@ -9,6 +9,67 @@ import { useMarketplace } from '../../context/MarketplaceContext';
 import Button from '../../components/Button';
 import SEO from '../../components/SEO';
 import { formatPrice } from '../../utils/helpers';
+import { orderDisplayAmounts } from '../../../shared/pricing.js';
+import { api } from '../../utils/api';
+
+// Orders created by the server-verified checkout (pricing_version 2) only count once paid.
+const isPlacedOrder = (o) => !(o.pricing_version >= 2) || ['captured', 'partially_refunded', 'refunded'].includes(o.payment_status);
+
+/** Payments that need a human: amount mismatch, duplicate payment, unconfirmed captures. */
+function PaymentAttention({ onChanged }) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const load = async () => {
+    try {
+      setError('');
+      const { data: d } = await api('/api/admin/orders/attention');
+      setData(d);
+    } catch (err) {
+      setError(err?.message || 'Could not load the payment review queue.');
+    }
+  };
+  useEffect(() => { load(); }, []);
+  const recheck = async (id) => {
+    setBusy(id);
+    try { await api(`/api/admin/orders/${id}/reconcile`, { method: 'POST' }); await load(); onChanged?.(); }
+    catch (err) { setError(err?.message); }
+    finally { setBusy(''); }
+  };
+  const resolve = async (id) => {
+    const note = window.prompt('How was this resolved? (e.g. "Refunded duplicate payment pay_xxx")');
+    if (!note?.trim()) return;
+    setBusy(id);
+    try { await api(`/api/admin/orders/${id}/resolve`, { method: 'POST', body: { note } }); await load(); }
+    catch (err) { setError(err?.message); }
+    finally { setBusy(''); }
+  };
+  if (error) return <p className="text-xs text-red-600 mb-6">{error}</p>;
+  if (!data) return null;
+  const stale = data.awaitingPayment.filter((x) => x.payment_status && x.payment_status !== 'created');
+  const rows = [...data.needsReview, ...stale];
+  if (rows.length === 0) return null;
+  return (
+    <div className="border border-amber-300 bg-amber-50 p-4 mb-8">
+      <p className="text-[10px] uppercase tracking-wider font-semibold text-amber-800 mb-3">Payments needing attention ({rows.length})</p>
+      <div className="space-y-2">
+        {rows.map((r) => (
+          <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 text-xs bg-white border border-amber-200 p-3">
+            <div>
+              <span className="font-medium">#{r.id.slice(-8)}</span> · {r.customer_name} · {formatPrice(r.total)}
+              <span className="ml-2 text-amber-700">{r.review_reason?.replace(/_/g, ' ') || r.payment_status}</span>
+              {r.payment_id && <span className="ml-2 font-mono text-neutral-400">{r.payment_id}</span>}
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" loading={busy === r.id} onClick={() => recheck(r.id)}>Re-check with Razorpay</Button>
+              {r.needs_review && <Button size="sm" onClick={() => resolve(r.id)}>Mark resolved</Button>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const ORDER_STATUS_COLORS = {
   pending: 'bg-amber-100 text-amber-700',
@@ -43,7 +104,8 @@ export default function AdminOrders({ embedded }) {
     fetchAllOrders().then(() => setPageLoading(false));
   }, [user, navigate, embedded, fetchAllOrders]);
 
-  const filtered = orders
+  const placedOrders = orders.filter(isPlacedOrder);
+  const filtered = placedOrders
     .filter(o => statusFilter === 'all' || o.status === statusFilter)
     .filter(o => {
       if (!searchQuery) return true;
@@ -57,23 +119,28 @@ export default function AdminOrders({ embedded }) {
     });
 
   const stats = {
-    total: orders.length,
-    pending: orders.filter(o => o.status === 'pending').length,
-    confirmed: orders.filter(o => o.status === 'confirmed').length,
-    shipped: orders.filter(o => o.status === 'shipped').length,
-    delivered: orders.filter(o => o.status === 'delivered').length,
-    returned: orders.filter(o => o.status === 'returned').length,
+    total: placedOrders.length,
+    pending: placedOrders.filter(o => o.status === 'pending').length,
+    confirmed: placedOrders.filter(o => o.status === 'confirmed').length,
+    shipped: placedOrders.filter(o => o.status === 'shipped').length,
+    delivered: placedOrders.filter(o => o.status === 'delivered').length,
+    returned: placedOrders.filter(o => o.status === 'returned').length,
   };
 
-  const totalRevenue = orders
+  const totalRevenue = placedOrders
     .filter(o => ['confirmed', 'shipped', 'delivered'].includes(o.status))
     .reduce((sum, o) => sum + (o.total || 0), 0);
 
   const handleStatusUpdate = async (orderId, newStatus) => {
     setActionLoading(true);
-    await updateOrderStatus(orderId, newStatus);
-    setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : null);
-    setActionLoading(false);
+    try {
+      await updateOrderStatus(orderId, newStatus);
+      setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : null);
+    } catch (err) {
+      alert(err?.message || 'Could not update the order.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   if (pageLoading) {
@@ -113,6 +180,8 @@ export default function AdminOrders({ embedded }) {
           <StatCard label="Returned" value={stats.returned} color="bg-red-50" />
           <StatCard label="Revenue" value={`₹${(totalRevenue / 1000).toFixed(1)}K`} color="bg-neutral-50" />
         </div>
+
+        <PaymentAttention onChanged={fetchAllOrders} />
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -273,7 +342,7 @@ function OrderDetailPanel({ order, onClose, onStatusUpdate, actionLoading }) {
           <div>
             <p className="text-[10px] uppercase tracking-wider text-neutral-400 mb-3">Order Items</p>
             <div className="space-y-2">
-              {order.items?.map((item, i) => (
+              {orderDisplayAmounts(order).items.map((item, i) => (
                 <div key={i} className="flex items-center gap-3 p-3 bg-neutral-50 border border-neutral-100">
                   <div className="w-12 h-12 bg-neutral-200 border overflow-hidden flex-shrink-0">
                     {item.image ? (
@@ -285,10 +354,10 @@ function OrderDetailPanel({ order, onClose, onStatusUpdate, actionLoading }) {
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-luxury-charcoal font-medium truncate">{item.name}</p>
                     <p className="text-[10px] text-neutral-400">
-                      Qty: {item.quantity} {item.size && `| Size: ${item.size}`} {item.color && `| ${item.color}`}
+                      Qty: {item.quantity} {item.size ? `| Size: ${item.size}` : item.size_applicable === false ? '| No size' : '| Size: not recorded'} {item.color && `| ${item.color}`}
                     </p>
                   </div>
-                  <p className="text-xs font-medium text-luxury-charcoal">{formatPrice(item.price * (item.quantity || 1))}</p>
+                  <p className="text-xs font-medium text-luxury-charcoal">{Number.isFinite(item.lineTotal) ? formatPrice(item.lineTotal) : '—'}</p>
                 </div>
               ))}
             </div>
@@ -301,8 +370,8 @@ function OrderDetailPanel({ order, onClose, onStatusUpdate, actionLoading }) {
               <p className="text-[10px] uppercase tracking-wider text-neutral-400">Payment</p>
             </div>
             <div className="space-y-1 text-xs">
-              <div className="flex justify-between"><span className="text-neutral-400">Subtotal</span><span>{formatPrice(order.subtotal)}</span></div>
-              <div className="flex justify-between"><span className="text-neutral-400">Shipping</span><span>{order.shipping === 0 ? 'Free' : formatPrice(order.shipping)}</span></div>
+              <div className="flex justify-between"><span className="text-neutral-400">Subtotal</span><span>{formatPrice(orderDisplayAmounts(order).subtotal)}</span></div>
+              <div className="flex justify-between"><span className="text-neutral-400">Shipping</span><span>{orderDisplayAmounts(order).shipping === 0 ? 'Free' : formatPrice(orderDisplayAmounts(order).shipping)}</span></div>
               <div className="flex justify-between font-medium text-sm pt-1 border-t border-neutral-100 mt-1">
                 <span>Total</span><span>{formatPrice(order.total)}</span>
               </div>

@@ -1,4 +1,14 @@
 import { createContext, useContext, useReducer, useCallback, useState } from 'react';
+// Pricing, delivery tiers and the festive-season restriction live in shared/pricing.js so the
+// storefront and the payment server always agree on the amount.
+import {
+  SHIPPING_TIERS,
+  UNAVAILABLE_SHIPPING_TIERS,
+  SHIPPING_UNAVAILABLE_MESSAGE,
+  computeTotals,
+  customerUnitPrice,
+  MAX_QUANTITY_PER_LINE,
+} from '../../shared/pricing.js';
 
 const CartContext = createContext(null);
 
@@ -13,7 +23,7 @@ const cartReducer = (state, action) => {
           ...state,
           items: state.items.map((item) =>
             item.id === existing.id && item.size === existing.size && item.color === existing.color
-              ? { ...item, quantity: item.quantity + 1 }
+              ? { ...item, quantity: Math.min(MAX_QUANTITY_PER_LINE, item.quantity + 1) }
               : item
           ),
         };
@@ -32,7 +42,7 @@ const cartReducer = (state, action) => {
         ...state,
         items: state.items.map((item) =>
           item.id === action.payload.id && item.size === action.payload.size && item.color === action.payload.color
-            ? { ...item, quantity: Math.max(1, action.payload.quantity) }
+            ? { ...item, quantity: Math.min(MAX_QUANTITY_PER_LINE, Math.max(1, action.payload.quantity)) }
             : item
         ),
       };
@@ -43,34 +53,25 @@ const cartReducer = (state, action) => {
   }
 };
 
-export const SHIPPING_TIERS = [
-  {
-    id: 'standard',
-    title: 'Standard Delivery',
-    timeline: '5–7 business days',
-    price: 49,
-    basePrice: 35,
-    freeAbove: 999,
-  },
-  {
-    id: 'express',
-    title: 'Express Delivery',
-    timeline: '2–3 business days',
-    price: 99,
-    basePrice: 71,
-  },
-  {
-    id: 'same-day',
-    title: 'Same-Day Delivery (Delhi NCR)',
-    timeline: 'Available for orders placed before 12PM',
-    price: 149,
-    basePrice: 106,
-  },
-];
+
+export { SHIPPING_TIERS, UNAVAILABLE_SHIPPING_TIERS, SHIPPING_UNAVAILABLE_MESSAGE };
+
+/** Customer-rupee line total for a cart item (item.price is the base price). */
+export const lineTotal = (item) => customerUnitPrice(item.price) * item.quantity;
 
 export function CartProvider({ children }) {
   const [state, dispatch] = useReducer(cartReducer, { items: [] });
-  const [shippingOption, setShippingOption] = useState('standard');
+  const [shippingOption, setShippingOptionRaw] = useState('standard');
+
+  // Returns false (and keeps Standard Delivery) when the requested tier is unavailable.
+  const setShippingOption = useCallback((id) => {
+    if (UNAVAILABLE_SHIPPING_TIERS.includes(id)) {
+      setShippingOptionRaw('standard');
+      return false;
+    }
+    setShippingOptionRaw(id);
+    return true;
+  }, []);
 
   const addItem = useCallback((product, size, color) => {
     dispatch({ type: 'ADD_ITEM', payload: { ...product, size, color } });
@@ -89,30 +90,17 @@ export function CartProvider({ children }) {
   }, []);
 
   const itemCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotal = state.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const visibleSubtotal = Math.round(subtotal * 1.4);
-
-  // Compute shipping based on selected tier
-  let shipping = 0;
-  let shippingFee = 0;
-
-  if (shippingOption === 'standard') {
-    if (visibleSubtotal >= 999) {
-      shipping = 0;
-      shippingFee = 0;
-    } else {
-      shipping = 35; // 35 * 1.4 = 49
-      shippingFee = 49;
-    }
-  } else if (shippingOption === 'express') {
-    shipping = 71; // 71 * 1.4 = 99.4 -> 99
-    shippingFee = 99;
-  } else if (shippingOption === 'same-day') {
-    shipping = 106; // 106 * 1.4 = 148.4 -> 149
-    shippingFee = 149;
-  }
-
-  const total = subtotal + shipping;
+  // All amounts below are customer rupees (markup already applied). The server recomputes
+  // them independently at checkout; these are for display only.
+  const totals = computeTotals(
+    state.items.map((item) => ({ basePrice: item.price, quantity: item.quantity })),
+    shippingOption
+  );
+  const subtotal = totals.subtotal;
+  const shipping = totals.shipping;
+  const total = totals.total;
+  const shippingFee = shipping;
+  const visibleSubtotal = subtotal;
 
   return (
     <CartContext.Provider

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test shared/*.test.js src/hooks/*.test.js && npm --prefix server test",
+    "test:rules": "npx firebase-tools emulators:exec --only database --project demo-brandclothzy \"node --test tests/rules/\""
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
@@ -19,6 +21,7 @@
     "react-router-dom": "^7.1.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",

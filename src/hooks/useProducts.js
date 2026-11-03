@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ref as dbRef, get } from 'firebase/database';
+import { ref as dbRef, get, query, orderByChild, equalTo } from 'firebase/database';
 import { db } from '../firebase';
 import { products as staticProducts } from '../data/products';
+import { customerUnitPrice } from '../../shared/pricing.js';
 
 // Convert Firebase product category "Men - Shirts" → { gender: "Men", category: "Shirts" }
 function normalizeFirebaseProduct(p) {
@@ -13,11 +14,15 @@ function normalizeFirebaseProduct(p) {
     category = parts.slice(1).join(' - ').trim();
     if (gender === 'Unisex') gender = '';
   }
+  // The stored `price` is exactly what the server charges (see server/lib/catalog.js), so it is
+  // never swapped here. MRP is shown only when it is genuinely higher.
+  const price = Number(p.price) || 0;
+  const mrp = Number(p.original_price) || 0;
   return {
     id: p.id,
     name: p.name || '',
-    price: Number(p.price) || 0,
-    originalPrice: Number(p.original_price) || null,
+    price,
+    originalPrice: mrp > price ? mrp : null,
     category,
     gender,
     description: p.description || '',
@@ -40,7 +45,8 @@ export function useProducts() {
     let cancelled = false;
     (async () => {
       try {
-        const snapshot = await get(dbRef(db, 'products'));
+        // Only approved products are readable by the public (database.rules.json).
+        const snapshot = await get(query(dbRef(db, 'products'), orderByChild('status'), equalTo('approved')));
         if (snapshot.exists() && !cancelled) {
           const data = snapshot.val();
           const approved = Object.entries(data)
@@ -57,8 +63,11 @@ export function useProducts() {
     return () => { cancelled = true; };
   }, []);
 
+  // customerPrice = what the shopper pays; used by cards, filters, sorting and SEO alike.
   const products = useMemo(() => {
-    return [...staticProducts, ...firebaseProducts];
+    return [...staticProducts, ...firebaseProducts]
+      .map((p) => ({ ...p, customerPrice: customerUnitPrice(p.price) }))
+      .filter((p) => Number.isFinite(p.customerPrice));
   }, [firebaseProducts]);
 
   const getProductById = useCallback((id) => {

@@ -1,8 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getAnalytics } from 'firebase/analytics';
 import { getDatabase } from 'firebase/database';
-import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDikZgQVfiJ31zHapRmDpmEnRSHdoTQN8M",
@@ -16,8 +14,24 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const analytics = getAnalytics(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const db = getDatabase(app);
-export const storage = getStorage(app);
+// Loaded on demand: Storage is only needed for seller image uploads, Analytics only after
+// the page is interactive. Keeping them out of the main bundle speeds up first load.
+let storagePromise;
+export function getStorageLazy() {
+  storagePromise ??= import('firebase/storage').then((m) => ({ ...m, storage: m.getStorage(app) }));
+  return storagePromise;
+}
+
+if (typeof window !== 'undefined') {
+  const startAnalytics = () =>
+    import('firebase/analytics')
+      .then(async ({ getAnalytics, isSupported }) => {
+        if (await isSupported()) getAnalytics(app);
+      })
+      .catch(() => {});
+  if ('requestIdleCallback' in window) window.requestIdleCallback(startAnalytics, { timeout: 5000 });
+  else window.setTimeout(startAnalytics, 3000);
+}

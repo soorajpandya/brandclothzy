@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, ShoppingBag } from 'lucide-react';
-import { displayPrice } from '../utils/helpers';
+import { displayPrice, productImageSrcSet } from '../utils/helpers';
 import { useUI } from '../context/UIContext';
 
 export default function ProductCard({ product }) {
@@ -18,6 +18,9 @@ export default function ProductCard({ product }) {
           )}
           <img
             src={product.images[imageIndex]}
+            srcSet={productImageSrcSet(product.images[imageIndex])}
+            sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+            decoding="async"
             alt={product.name}
             className={`w-full h-full object-cover transition-all duration-700 group-hover:scale-105 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
             onMouseEnter={() => product.images.length > 1 && setImageIndex(1)}
@@ -67,7 +70,7 @@ export default function ProductCard({ product }) {
         </Link>
         <div className="flex items-center gap-2">
           <p className="text-sm font-medium">{displayPrice(product.price)}</p>
-          {product.originalPrice && (
+          {product.originalPrice > product.price && (
             <p className="text-xs text-neutral-400 line-through">{displayPrice(product.originalPrice)}</p>
           )}
         </div>

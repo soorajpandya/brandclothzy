@@ -6,6 +6,7 @@ import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useUI } from '../context/UIContext';
 import { displayPrice } from '../utils/helpers';
+import { customerUnitPrice } from '../../shared/pricing.js';
 import ProductCard from '../components/ProductCard';
 import Button from '../components/Button';
 import { ProductDetailSkeleton } from '../components/Skeleton';
@@ -22,7 +23,6 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedSize, setSelectedSize] = useState('');
-  const [selectedColor, setSelectedColor] = useState('');
   const [quantity, setQuantity] = useState(1);
   const [imageZoomed, setImageZoomed] = useState(false);
   const [zoomPosition, setZoomPosition] = useState({ x: 0, y: 0 });
@@ -35,7 +35,6 @@ export default function ProductDetail() {
       setProduct(found);
       setSelectedImage(0);
       setSelectedSize('');
-      setSelectedColor('');
       setQuantity(1);
       setLoading(false);
       if (found && typeof window.fbq === 'function') {
@@ -43,7 +42,7 @@ export default function ProductDetail() {
           content_ids: [found.id],
           content_name: found.name,
           content_type: 'product',
-          value: found.price,
+          value: customerUnitPrice(found.price),
           currency: 'INR',
         });
       }
@@ -73,16 +72,15 @@ export default function ProductDetail() {
       addToast('Please select a size', 'error');
       return;
     }
-    const color = selectedColor || product.colors[0];
     for (let i = 0; i < quantity; i++) {
-      addItem(product, selectedSize, color);
+      addItem(product, selectedSize, '');
     }
     if (typeof window.fbq === 'function') {
       window.fbq('track', 'AddToCart', {
         content_ids: [product.id],
         content_name: product.name,
         content_type: 'product',
-        value: product.price * quantity,
+        value: customerUnitPrice(product.price) * quantity,
         currency: 'INR',
         num_items: quantity,
       });
@@ -102,7 +100,7 @@ export default function ProductDetail() {
       <SEO
         title={`${product.name} — ${product.category} for ${product.gender}`}
         path={`/product/${product.id}`}
-        description={`Buy ${product.name} at ₹${product.price}. ${product.description} Shop ${product.gender.toLowerCase()}'s ${product.category.toLowerCase()} at BrandClothzy.`}
+        description={`Buy ${product.name} at ₹${customerUnitPrice(product.price).toLocaleString('en-IN')}. ${product.description} Shop ${product.gender.toLowerCase()}'s ${product.category.toLowerCase()} at BrandClothzy.`}
         keywords={`${product.name}, ${product.category}, ${product.gender} ${product.category}, buy ${product.category.toLowerCase()} online, BrandClothzy ${product.category.toLowerCase()}`}
         image={product.images[0]}
         type="product"
@@ -178,7 +176,7 @@ export default function ProductDetail() {
               </h1>
               <div className="flex items-center gap-3 mb-8">
                 <span className="text-xl font-medium">{displayPrice(product.price)}</span>
-                {product.originalPrice && (
+                {product.originalPrice > product.price && (
                   <span className="text-base text-neutral-400 line-through">
                     {displayPrice(product.originalPrice)}
                   </span>
@@ -209,27 +207,6 @@ export default function ProductDetail() {
                       }`}
                     >
                       {size}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <p className="text-[10px] uppercase tracking-[0.25em] font-medium text-luxury-taupe mb-3">
-                  Color
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {product.colors.map((color) => (
-                    <button
-                      key={color}
-                      onClick={() => setSelectedColor(color)}
-                      className={`px-4 py-2.5 text-xs border transition-all duration-200 ${
-                        selectedColor === color
-                          ? 'border-luxury-charcoal bg-luxury-charcoal text-white'
-                          : 'border-neutral-200 hover:border-luxury-charcoal text-luxury-charcoal'
-                      }`}
-                    >
-                      {color}
                     </button>
                   ))}
                 </div>

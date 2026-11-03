@@ -16,6 +16,7 @@ const STATUS_CONFIG = {
   approved:             { color: 'bg-emerald-400',  text: 'Approved – Complete Onboarding', icon: CheckCircle },
   onboarding_complete:  { color: 'bg-purple-400',   text: 'Onboarding Complete – Pending Go-Live', icon: Package },
   live:                 { color: 'bg-green-500',     text: 'Live – Selling',           icon: Rocket },
+  suspended:            { color: 'bg-neutral-400',   text: 'Suspended – products hidden', icon: Package },
   rejected:             { color: 'bg-red-400',       text: 'Rejected',                 icon: XCircle },
 };
 
@@ -196,6 +197,7 @@ function StatusBanner({ profile, status }) {
             {profile.status === 'under_review' && 'Our team is reviewing your application'}
             {profile.status === 'onboarding_complete' && 'Onboarding complete – pending final go-live approval'}
             {profile.status === 'rejected' && 'Application was not approved'}
+            {profile.status === 'suspended' && 'Your seller account is suspended. Your products are hidden from the store — please contact support.'}
           </h3>
           <p className="text-xs text-neutral-500">
             {profile.status === 'applied' && "We typically review within 3-5 business days. You'll receive an email update."}

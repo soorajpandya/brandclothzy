@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronRight, Play } from 'lucide-react';
-import { ref as dbRef, push, set, get, query, orderByChild, equalTo } from 'firebase/database';
+import { ref as dbRef, set } from 'firebase/database';
 import { db } from '../firebase';
 import { useProducts } from '../hooks/useProducts';
 import { collections } from '../data/products';
@@ -29,29 +29,25 @@ export default function Home() {
     setEmailError('');
     setSubscribing(true);
 
+    // Each address is stored under a key derived from the email. The database rules allow
+    // creating a new entry but never reading the list, so subscriber emails cannot be harvested;
+    // a second sign-up with the same address is simply rejected.
+    const key = encodeURIComponent(cleanEmail).replace(/\./g, '%2E');
     try {
-      // Check if already subscribed to prevent duplicates
-      const subQuery = query(dbRef(db, 'subscribers'), orderByChild('email'), equalTo(cleanEmail));
-      const snapshot = await get(subQuery);
-
-      if (snapshot.exists()) {
-        addToast('You are already part of the BrandClothzy private circle!', 'info');
-      } else {
-        const newSubRef = push(dbRef(db, 'subscribers'));
-        await set(newSubRef, {
-          email: cleanEmail,
-          created_at: new Date().toISOString(),
-          source: 'homepage_newsletter',
-          status: 'active',
-        });
-        addToast('Welcome to the BrandClothzy world. Expect elegance in your inbox.', 'success');
-      }
-      setEmail('');
-    } catch (err) {
-      console.error('Newsletter subscription error:', err);
-      // Friendly fallback so user experience stays smooth
+      await set(dbRef(db, `newsletter_subscribers/${key}`), {
+        email: cleanEmail,
+        created_at: new Date().toISOString(),
+        source: 'homepage_newsletter',
+      });
       addToast('Welcome to the BrandClothzy world. Expect elegance in your inbox.', 'success');
       setEmail('');
+    } catch (err) {
+      if (String(err?.code || err?.message).toLowerCase().includes('permission')) {
+        addToast('You are already part of the BrandClothzy private circle!', 'info');
+        setEmail('');
+      } else {
+        addToast('Could not subscribe right now. Please try again.', 'error');
+      }
     } finally {
       setSubscribing(false);
     }
@@ -66,11 +62,20 @@ export default function Home() {
       />
       <section className="relative h-screen flex items-end sm:items-center overflow-hidden">
         <div className="absolute inset-0">
-          <img
-            src="/hero.png"
-            alt="Luxury Indian fashion campaign"
-            className="w-full h-full object-cover object-top"
-          />
+          {/* LCP image: responsive AVIF/WebP (≈16–56 KB) instead of the 1.8 MB PNG */}
+          <picture>
+            <source type="image/avif" srcSet="/hero-768.avif 768w, /hero-1280.avif 1280w, /hero-1536.avif 1536w" sizes="100vw" />
+            <source type="image/webp" srcSet="/hero-768.webp 768w, /hero-1280.webp 1280w, /hero-1536.webp 1536w" sizes="100vw" />
+            <img
+              src="/hero-1280.webp"
+              alt="Luxury Indian fashion campaign"
+              width="1536"
+              height="1024"
+              fetchPriority="high"
+              decoding="async"
+              className="w-full h-full object-cover object-top"
+            />
+          </picture>
           <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/30 to-transparent" />
         </div>
         <div className="relative z-10 text-left text-white max-w-[1440px] mx-auto w-full px-4 sm:px-6 lg:px-10 pb-24 sm:pb-0">
@@ -123,6 +128,8 @@ export default function Home() {
             >
               <img
                 src={collection.image}
+                loading="lazy"
+                decoding="async"
                 alt={collection.title}
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
               />
@@ -147,7 +154,9 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center">
             <div className="relative aspect-[4/5] overflow-hidden">
               <img
-                src="https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=900&q=80"
+                src="https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=900&q=80&auto=format"
+                loading="lazy"
+                decoding="async"
                 alt="Editorial campaign"
                 className="w-full h-full object-cover"
               />

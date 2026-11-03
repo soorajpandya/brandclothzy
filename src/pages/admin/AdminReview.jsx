@@ -18,6 +18,7 @@ const STATUS_COLORS = {
   onboarding_complete: 'bg-purple-100 text-purple-700',
   live: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+  suspended: 'bg-neutral-200 text-neutral-700',
 };
 
 const STATUS_LABELS = {
@@ -27,6 +28,7 @@ const STATUS_LABELS = {
   onboarding_complete: 'Onboarding Complete',
   live: 'Live',
   rejected: 'Rejected',
+  suspended: 'Suspended',
 };
 
 export default function AdminReview({ embedded }) {
@@ -156,7 +158,17 @@ export default function AdminReview({ embedded }) {
             <SellerReviewPanel
               seller={selectedSeller}
               onStatusChange={async (status) => {
-                await updateSellerStatus(selectedSeller.id, status);
+                let reason = '';
+                if (['rejected', 'suspended'].includes(status)) {
+                  reason = window.prompt(`Reason for marking this seller as ${status}? (required)`) || '';
+                  if (!reason.trim()) return;
+                }
+                try {
+                  await updateSellerStatus(selectedSeller.id, status, reason.trim());
+                } catch (err) {
+                  window.alert(err?.message || 'Could not change status.');
+                  return;
+                }
                 const updated = allSellers.find(s => s.id === selectedSeller.id);
                 if (updated) setSelectedSeller({ ...updated, status });
               }}

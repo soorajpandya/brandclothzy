@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useCallback } from 'react';
 import { ref as dbRef, get, set, update, push, query, orderByChild, equalTo } from 'firebase/database';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { db, getStorageLazy } from '../firebase';
 import { useAuth } from './AuthContext';
 
 const MarketplaceContext = createContext(null);
@@ -10,8 +9,20 @@ const MarketplaceContext = createContext(null);
 export const PRODUCT_STATUSES = ['pending_review', 'approved', 'rejected', 'disabled'];
 export const ORDER_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned'];
 
-// ─── Admin UIDs (hardcoded for now) ──────────────────
-const ADMIN_UIDS = ['ADMIN']; // Will match any logged-in user for now
+// Product lifecycle (existing status names kept so live catalog data needs no migration):
+//   pending_review → approved (published) | rejected (with reason)
+//   approved → disabled (unpublished / seller suspended) → approved
+// Sellers can only create or edit into pending_review; only admins publish (database.rules.json).
+// Every seller edit sends the product back to review.
+
+/** Append-only audit trail for moderation actions (admin-only path in database.rules.json). */
+async function writeAudit(actor, entry) {
+  try {
+    await push(dbRef(db, 'audit_logs'), { ...entry, actor_uid: actor?.uid || null, at: new Date().toISOString() });
+  } catch (err) {
+    console.warn('Audit log write failed:', err?.message);
+  }
+}
 
 export function MarketplaceProvider({ children }) {
   const { user } = useAuth();
@@ -29,6 +40,7 @@ export function MarketplaceProvider({ children }) {
 
     // Upload images
     const imageUrls = [];
+    const { storage, ref: storageRef, uploadBytes, getDownloadURL } = await getStorageLazy();
     for (const file of imageFiles) {
       const fileRef = storageRef(storage, `products/${user.uid}/${Date.now()}_${file.name}`);
       await uploadBytes(fileRef, file);
@@ -50,7 +62,7 @@ export function MarketplaceProvider({ children }) {
       sizes: productData.sizes || [],
       colors: productData.colors || [],
       images: imageUrls,
-      status: 'approved',
+      status: 'pending_review',
       admin_feedback: '',
       created_at: now,
       updated_at: now,
@@ -79,7 +91,7 @@ export function MarketplaceProvider({ children }) {
         sizes: item.sizes || [],
         colors: item.colors || [],
         images: item.images || [],
-        status: 'approved',
+        status: 'pending_review',
         admin_feedback: '',
         created_at: now,
         updated_at: now,
@@ -96,6 +108,7 @@ export function MarketplaceProvider({ children }) {
 
     // Upload any new image files
     const newUrls = [];
+    const { storage, ref: storageRef, uploadBytes, getDownloadURL } = await getStorageLazy();
     for (const file of newImageFiles) {
       const fileRef = storageRef(storage, `products/${user.uid}/${Date.now()}_${file.name}`);
       await uploadBytes(fileRef, file);
@@ -114,6 +127,8 @@ export function MarketplaceProvider({ children }) {
       sizes: productData.sizes || [],
       colors: productData.colors || [],
       images: allImages,
+      status: 'pending_review',
+      admin_feedback: '',
       updated_at: new Date().toISOString(),
     });
   }, [user]);
@@ -155,20 +170,27 @@ export function MarketplaceProvider({ children }) {
     await update(dbRef(db, `products/${productId}`), {
       status: 'approved',
       admin_feedback: '',
+      reviewed_by: user?.uid || null,
+      reviewed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
+    await writeAudit(user, { type: 'product_approved', product_id: productId });
     await fetchAllProducts();
-  }, [fetchAllProducts]);
+  }, [fetchAllProducts, user]);
 
   // Admin: Reject product with feedback
   const rejectProduct = useCallback(async (productId, feedback) => {
+    if (!feedback || !String(feedback).trim()) throw new Error('A rejection reason is required.');
     await update(dbRef(db, `products/${productId}`), {
       status: 'rejected',
-      admin_feedback: feedback,
+      admin_feedback: String(feedback).trim(),
+      reviewed_by: user?.uid || null,
+      reviewed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
+    await writeAudit(user, { type: 'product_rejected', product_id: productId, reason: String(feedback).trim() });
     await fetchAllProducts();
-  }, [fetchAllProducts]);
+  }, [fetchAllProducts, user]);
 
   // Admin: Disable product
   const disableProduct = useCallback(async (productId) => {
@@ -176,58 +198,27 @@ export function MarketplaceProvider({ children }) {
       status: 'disabled',
       updated_at: new Date().toISOString(),
     });
+    await writeAudit(user, { type: 'product_disabled', product_id: productId });
     await fetchAllProducts();
-  }, [fetchAllProducts]);
+  }, [fetchAllProducts, user]);
 
   // Admin: Re-enable product
   const enableProduct = useCallback(async (productId) => {
     await update(dbRef(db, `products/${productId}`), {
       status: 'approved',
+      disabled_reason: null,
       updated_at: new Date().toISOString(),
     });
+    await writeAudit(user, { type: 'product_enabled', product_id: productId });
     await fetchAllProducts();
-  }, [fetchAllProducts]);
+  }, [fetchAllProducts, user]);
 
   // ════════════════════════════════════════════════════
   //  ORDERS
   // ════════════════════════════════════════════════════
 
-  // Create order (from checkout)
-  const createOrder = useCallback(async (orderData) => {
-    if (!user) throw new Error('Must be logged in');
-
-    const now = new Date().toISOString();
-    const newOrderRef = push(dbRef(db, 'orders'));
-    const order = {
-      id: newOrderRef.key,
-      customer_id: user.uid,
-      customer_name: orderData.customerName,
-      customer_email: orderData.customerEmail,
-      customer_phone: orderData.customerPhone,
-      shipping_address: orderData.shippingAddress,
-      items: orderData.items.map(item => ({
-        product_id: item.id,
-        seller_id: item.seller_id || '',
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        size: item.size,
-        color: item.color,
-        image: item.images?.[0] || '',
-      })),
-      subtotal: orderData.subtotal,
-      shipping: orderData.shipping,
-      total: orderData.total,
-      payment_id: orderData.paymentId || '',
-      status: 'pending',
-      status_history: [{ status: 'pending', timestamp: now }],
-      created_at: now,
-      updated_at: now,
-    };
-
-    await set(newOrderRef, order);
-    return order;
-  }, [user]);
+  // Orders are created and marked paid ONLY by the API server (server/app.js) after Razorpay
+  // verification. The browser cannot write orders (database.rules.json).
 
   // Fetch all orders (admin)
   const fetchAllOrders = useCallback(async () => {
@@ -248,15 +239,14 @@ export function MarketplaceProvider({ children }) {
     }
   }, []);
 
-  // Fetch orders by seller
+  // Fetch orders by seller — reads the seller-scoped copies written by the server, so a seller
+  // never needs (or gets) read access to other customers' orders.
   const fetchSellerOrders = useCallback(async (sellerId) => {
     try {
-      const snapshot = await get(dbRef(db, 'orders'));
+      const snapshot = await get(dbRef(db, `seller_orders/${sellerId}`));
       if (!snapshot.exists()) return [];
-      const data = snapshot.val();
-      return Object.entries(data)
+      return Object.entries(snapshot.val())
         .map(([id, val]) => ({ id, ...val }))
-        .filter(order => order.items?.some(item => item.seller_id === sellerId))
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
     } catch {
       return [];
@@ -277,21 +267,33 @@ export function MarketplaceProvider({ children }) {
     }
   }, []);
 
-  // Admin: Update order status
+  // Admin: Update fulfilment status. Payment fields (amount, payment status, items) cannot be
+  // changed from the browser — the rules reject it. Seller copies are kept in sync.
   const updateOrderStatus = useCallback(async (orderId, newStatus) => {
+    if (!ORDER_STATUSES.includes(newStatus)) throw new Error('Invalid status');
     const now = new Date().toISOString();
-    const snapshot = await get(dbRef(db, `orders/${orderId}/status_history`));
-    const history = snapshot.exists() ? snapshot.val() : [];
+    const snapshot = await get(dbRef(db, `orders/${orderId}`));
+    if (!snapshot.exists()) throw new Error('Order not found');
+    const order = snapshot.val();
+    if (!['captured', 'partially_refunded'].includes(order.payment_status) && order.pricing_version >= 2) {
+      throw new Error('This order has not been paid yet.');
+    }
+    const history = order.status_history || [];
     const historyArr = Array.isArray(history) ? history : Object.values(history);
-    historyArr.push({ status: newStatus, timestamp: now });
+    historyArr.push({ status: newStatus, timestamp: now, actor: user?.uid || 'admin' });
 
-    await update(dbRef(db, `orders/${orderId}`), {
-      status: newStatus,
-      status_history: historyArr,
-      updated_at: now,
-    });
+    const updates = {
+      [`orders/${orderId}/status`]: newStatus,
+      [`orders/${orderId}/status_history`]: historyArr,
+      [`orders/${orderId}/updated_at`]: now,
+    };
+    for (const sellerId of order.seller_ids || []) {
+      updates[`seller_orders/${sellerId}/${orderId}/status`] = newStatus;
+    }
+    await update(dbRef(db), updates);
+    await writeAudit(user, { type: 'order_status_changed', order_id: orderId, from: order.status, to: newStatus });
     await fetchAllOrders();
-  }, [fetchAllOrders]);
+  }, [fetchAllOrders, user]);
 
   // ════════════════════════════════════════════════════
   //  SELLER PERFORMANCE (derived)
@@ -308,7 +310,8 @@ export function MarketplaceProvider({ children }) {
     sellerOrders.forEach(order => {
       const sellerItems = order.items.filter(i => i.seller_id === sellerId);
       sellerItems.forEach(item => {
-        totalRevenue += (item.price || 0) * (item.quantity || 1);
+        // Seller revenue is measured on the seller (base) price, not the marked-up customer price.
+        totalRevenue += (item.base_price ?? item.price ?? 0) * (item.quantity || 1);
         totalItems += item.quantity || 1;
       });
       if (order.status === 'returned') returnedOrders++;
@@ -330,9 +333,8 @@ export function MarketplaceProvider({ children }) {
   //  ROLE CHECK
   // ════════════════════════════════════════════════════
 
-  const isAdmin = useCallback(() => {
-    return user?.email === 'soorajpandya@gmail.com';
-  }, [user]);
+  // UI-only role check. Real enforcement is the 'admin' custom claim in database.rules.json and the API.
+  const isAdmin = useCallback(() => user?.isAdmin === true, [user]);
 
   const value = {
     // Products
@@ -348,7 +350,6 @@ export function MarketplaceProvider({ children }) {
     enableProduct,
     // Orders
     orders,
-    createOrder,
     fetchAllOrders,
     fetchSellerOrders,
     fetchUserOrders,

@@ -21,7 +21,8 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useSeller } from '../context/SellerContext';
 import { useMarketplace } from '../context/MarketplaceContext';
-import { displayPrice } from '../utils/helpers';
+import { formatPrice } from '../utils/helpers';
+import { orderDisplayAmounts } from '../../shared/pricing.js';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import SEO from '../components/SEO';
@@ -59,7 +60,8 @@ export default function Account() {
   useEffect(() => {
     if (user) {
       fetchUserOrders(user.uid).then((data) => {
-        setOrders(data);
+        // Unpaid checkout attempts are not orders; show only placed (paid / legacy) orders.
+        setOrders(data.filter((o) => !['awaiting_payment', 'cancelled'].includes(o.status) || o.payment_status === 'captured'));
         setOrdersLoading(false);
       });
     }
@@ -526,12 +528,12 @@ export default function Account() {
                           order.status === 'shipped' ? 'bg-blue-50 text-blue-600' :
                           order.status === 'cancelled' ? 'bg-red-50 text-red-600' :
                           'bg-amber-50 text-amber-600'
-                        }`}>{order.status || 'pending'}</span>
+                        }`}>{order.needs_review ? 'payment being verified' : order.status === 'pending' ? 'order placed' : (order.status || 'order placed')}</span>
                       </div>
                       <div className="flex items-center gap-4 text-[11px] text-neutral-400">
                         <span>{new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                         <span>{order.items?.length || 0} item{(order.items?.length || 0) !== 1 ? 's' : ''}</span>
-                        <span className="font-medium text-luxury-charcoal">{displayPrice(order.total)}</span>
+                        <span className="font-medium text-luxury-charcoal">{formatPrice(orderDisplayAmounts(order).total)}</span>
                       </div>
                     </div>
                     {expandedOrder === order.id ? <ChevronUp size={16} className="text-neutral-400" /> : <ChevronDown size={16} className="text-neutral-400" />}
@@ -539,7 +541,7 @@ export default function Account() {
 
                   {expandedOrder === order.id && (
                     <div className="border-t border-neutral-100 p-4 space-y-3">
-                      {order.items?.map((item, idx) => (
+                      {orderDisplayAmounts(order).items.map((item, idx) => (
                         <div key={idx} className="flex items-center gap-3">
                           {(item.image || item.images?.[0]) && (
                             <img src={item.image || item.images[0]} alt={item.name} className="w-12 h-12 object-cover border border-neutral-100" />
@@ -551,7 +553,7 @@ export default function Account() {
                               {' · '}Qty: {item.quantity || 1}
                             </p>
                           </div>
-                          <span className="text-sm text-luxury-charcoal">{displayPrice(item.price)}</span>
+                          <span className="text-sm text-luxury-charcoal">{Number.isFinite(item.lineTotal) ? formatPrice(item.lineTotal) : '—'}</span>
                         </div>
                       ))}
                       {order.shipping_address && (

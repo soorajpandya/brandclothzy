@@ -8,7 +8,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useMarketplace } from '../../context/MarketplaceContext';
 import Button from '../../components/Button';
 import SEO from '../../components/SEO';
-import { formatPrice } from '../../utils/helpers';
+import { formatPrice, displayPrice } from '../../utils/helpers';
+import { MARKUP_PERCENT } from '../../../shared/pricing.js';
 
 const STATUS_COLORS = {
   pending_review: 'bg-amber-100 text-amber-700',
@@ -58,18 +59,28 @@ export default function AdminProducts({ embedded }) {
 
   const handleApprove = async (productId) => {
     setActionLoading(true);
-    await approveProduct(productId);
-    setSelectedProduct(null);
-    setActionLoading(false);
+    try {
+      await approveProduct(productId);
+      setSelectedProduct(null);
+    } catch (err) {
+      alert(err?.message || 'Could not approve product.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleReject = async (productId) => {
     if (!rejectFeedback.trim()) { alert('Please provide feedback'); return; }
     setActionLoading(true);
-    await rejectProduct(productId, rejectFeedback);
-    setRejectFeedback('');
-    setSelectedProduct(null);
-    setActionLoading(false);
+    try {
+      await rejectProduct(productId, rejectFeedback);
+      setRejectFeedback('');
+      setSelectedProduct(null);
+    } catch (err) {
+      alert(err?.message || 'Could not reject product.');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   if (pageLoading) {
@@ -250,12 +261,16 @@ function ProductDetailPanel({ product, onClose, onApprove, onReject, rejectFeedb
                 <p className="text-luxury-charcoal">{product.category}</p>
               </div>
               <div>
-                <p className="text-[10px] text-neutral-400 uppercase tracking-wider">Price</p>
+                <p className="text-[10px] text-neutral-400 uppercase tracking-wider">Seller price</p>
                 <p className="text-luxury-charcoal font-medium">{formatPrice(product.price)}</p>
               </div>
               <div>
+                <p className="text-[10px] text-neutral-400 uppercase tracking-wider">Customer pays (+{MARKUP_PERCENT}%)</p>
+                <p className="text-luxury-charcoal font-medium">{displayPrice(product.price)}</p>
+              </div>
+              <div>
                 <p className="text-[10px] text-neutral-400 uppercase tracking-wider">MRP</p>
-                <p className="text-luxury-charcoal">{product.original_price ? formatPrice(product.original_price) : '—'}</p>
+                <p className="text-luxury-charcoal">{product.original_price ? `${formatPrice(product.original_price)} (shown as ${displayPrice(product.original_price)})` : '—'}</p>
               </div>
               <div>
                 <p className="text-[10px] text-neutral-400 uppercase tracking-wider">Sizes</p>

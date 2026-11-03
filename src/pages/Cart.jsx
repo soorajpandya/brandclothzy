@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom';
 import { Minus, Plus, X, ShoppingBag, ArrowRight } from 'lucide-react';
-import { useCart } from '../context/CartContext';
-import { displayPrice } from '../utils/helpers';
+import { useCart, lineTotal, UNAVAILABLE_SHIPPING_TIERS, SHIPPING_UNAVAILABLE_MESSAGE } from '../context/CartContext';
+import { useUI } from '../context/UIContext';
+import { displayPrice, formatPrice } from '../utils/helpers';
 import Button from '../components/Button';
 import SEO from '../components/SEO';
 
@@ -19,6 +20,7 @@ export default function Cart() {
     shippingTiers,
     visibleSubtotal,
   } = useCart();
+  const { addToast } = useUI();
 
   if (items.length === 0) {
     return (
@@ -89,7 +91,7 @@ export default function Cart() {
                         </h3>
                       </Link>
                       <p className="text-xs text-neutral-400 mt-1 font-light">
-                        {item.color} · Size {item.size}
+                        Size {item.size}
                       </p>
                       <p className="text-sm font-medium mt-1 sm:hidden">{displayPrice(item.price)}</p>
                     </div>
@@ -115,7 +117,7 @@ export default function Cart() {
                     </div>
 
                     <p className="text-sm font-medium hidden sm:block w-24 text-right">
-                      {displayPrice(item.price * item.quantity)}
+                      {formatPrice(lineTotal(item))}
                     </p>
 
                     <button
@@ -150,7 +152,7 @@ export default function Cart() {
               <div className="space-y-3 mb-6">
                 <div className="flex justify-between text-sm">
                   <span className="text-neutral-500 font-light">Subtotal</span>
-                  <span className="font-medium">{displayPrice(subtotal)}</span>
+                  <span className="font-medium">{formatPrice(subtotal)}</span>
                 </div>
 
                 {/* Delivery Options Selector */}
@@ -162,12 +164,14 @@ export default function Cart() {
                     {shippingTiers.map((tier) => {
                       const isFree = tier.id === 'standard' && visibleSubtotal >= 999;
                       const isSelected = shippingOption === tier.id;
+                      const isUnavailable = UNAVAILABLE_SHIPPING_TIERS.includes(tier.id);
                       return (
                         <button
                           key={tier.id}
                           type="button"
-                          onClick={() => setShippingOption(tier.id)}
-                          className={`w-full text-left p-3 border transition-all text-xs flex items-center justify-between gap-3 ${
+                          onClick={() => { if (!setShippingOption(tier.id)) addToast(SHIPPING_UNAVAILABLE_MESSAGE, 'info', 5000); }}
+                          aria-disabled={isUnavailable}
+                          className={`w-full text-left p-3 border transition-all text-xs flex items-center justify-between gap-3 ${isUnavailable ? 'opacity-50 cursor-not-allowed' : ''} ${
                             isSelected
                               ? 'border-luxury-charcoal bg-white shadow-sm'
                               : 'border-neutral-200/80 bg-white/50 hover:border-neutral-400'
@@ -183,7 +187,7 @@ export default function Cart() {
                             </span>
                             <div>
                               <p className="font-medium text-luxury-charcoal">{tier.title}</p>
-                              <p className="text-[11px] text-neutral-400 font-light">{tier.timeline}</p>
+                              <p className="text-[11px] text-neutral-400 font-light">{isUnavailable ? 'Unavailable during the festive season' : tier.timeline}</p>
                             </div>
                           </div>
                           <span className={`font-medium flex-shrink-0 ${isFree ? 'text-emerald-600' : 'text-luxury-charcoal'}`}>
@@ -198,7 +202,7 @@ export default function Cart() {
                 <div className="flex justify-between text-sm pt-2">
                   <span className="text-neutral-500 font-light">Shipping</span>
                   <span className={`font-medium ${shipping === 0 ? 'text-emerald-600' : ''}`}>
-                    {shipping === 0 ? 'Complimentary' : displayPrice(shipping)}
+                    {shipping === 0 ? 'Complimentary' : formatPrice(shipping)}
                   </span>
                 </div>
 
@@ -216,7 +220,7 @@ export default function Cart() {
               <div className="border-t border-neutral-200 pt-4 mb-8">
                 <div className="flex justify-between">
                   <span className="text-sm font-medium">Total</span>
-                  <span className="text-lg font-semibold">{displayPrice(total)}</span>
+                  <span className="text-lg font-semibold">{formatPrice(total)}</span>
                 </div>
                 <p className="text-[11px] text-neutral-400 font-light mt-1">Including all taxes</p>
               </div>

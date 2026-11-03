@@ -1,12 +1,23 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { ref as dbRef, get, set, update, query, orderByChild } from 'firebase/database';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+import { ref as dbRef, get, set, update, push, query, orderByChild, equalTo } from 'firebase/database';
+import { db, getStorageLazy } from '../firebase';
 import { useAuth } from './AuthContext';
 
 const SellerContext = createContext(null);
 
-const SELLER_STATUSES = ['applied', 'under_review', 'approved', 'onboarding_complete', 'live', 'rejected'];
+// Seller lifecycle — every promotion is an explicit admin action (enforced by database.rules.json):
+//   applied → under_review → approved → (seller completes onboarding) onboarding_complete → live
+//   any → rejected | suspended;  suspended → live (reinstated)
+const SELLER_STATUSES = ['applied', 'under_review', 'approved', 'onboarding_complete', 'live', 'rejected', 'suspended'];
+const SELLER_TRANSITIONS = {
+  applied: ['under_review', 'approved', 'rejected'],
+  under_review: ['approved', 'rejected'],
+  approved: ['onboarding_complete', 'live', 'rejected', 'suspended'],
+  onboarding_complete: ['live', 'rejected', 'suspended'],
+  live: ['suspended'],
+  rejected: ['under_review'],
+  suspended: ['live', 'rejected'],
+};
 
 const BRAND_TYPES = ['Manufacturer', 'D2C Brand', 'Distributor'];
 const BRAND_TIERS = ['budget', 'mid-range', 'premium'];
@@ -35,16 +46,7 @@ export function SellerProvider({ children }) {
       const snapshot = await get(dbRef(db, `sellers/${user.uid}`)).catch(() => null);
       if (snapshot && snapshot.exists()) {
         const data = snapshot.val();
-        // Auto-promote status when verification is marked true
-        if (data.verification?.verified === true && ['applied', 'under_review'].includes(data.status)) {
-          data.status = 'approved';
-          update(dbRef(db, `sellers/${user.uid}`), { status: 'approved', updated_at: new Date().toISOString() }).catch(() => {});
-        }
-        // Auto-promote onboarding_complete to live (no separate admin approval needed)
-        if (data.status === 'onboarding_complete') {
-          data.status = 'live';
-          update(dbRef(db, `sellers/${user.uid}`), { status: 'live', updated_at: new Date().toISOString() }).catch(() => {});
-        }
+        // No automatic promotion: approval and go-live are admin decisions (see SELLER_TRANSITIONS).
         setSellerProfile({ id: user.uid, ...data });
       } else {
         setSellerProfile(null);
@@ -134,6 +136,7 @@ export function SellerProvider({ children }) {
     if (!user || !sellerProfile) throw new Error('Not authorized');
 
     const urls = [];
+    const { storage, ref: storageRef, uploadBytes, getDownloadURL } = await getStorageLazy();
     for (const file of files) {
       const fileRef = storageRef(storage, `catalog/${user.uid}/${Date.now()}_${file.name}`);
       await uploadBytes(fileRef, file);
@@ -227,12 +230,44 @@ export function SellerProvider({ children }) {
     }
   }, []);
 
-  // Update seller status (admin)
-  const updateSellerStatus = useCallback(async (sellerId, newStatus) => {
-    await update(dbRef(db, `sellers/${sellerId}`), {
-      status: newStatus,
-      updated_at: new Date().toISOString(),
-    });
+  // Update seller status (admin). Suspending or rejecting a seller unpublishes their products;
+  // reinstating republishes only the products that were unpublished because of the suspension.
+  const updateSellerStatus = useCallback(async (sellerId, newStatus, reason = '') => {
+    const current = (await get(dbRef(db, `sellers/${sellerId}/status`))).val();
+    if (current && current !== newStatus && !(SELLER_TRANSITIONS[current] || []).includes(newStatus)) {
+      throw new Error(`Cannot change a seller from "${current}" to "${newStatus}".`);
+    }
+    const now = new Date().toISOString();
+    const updates = {
+      [`sellers/${sellerId}/status`]: newStatus,
+      [`sellers/${sellerId}/updated_at`]: now,
+      [`sellers/${sellerId}/status_reason`]: reason || null,
+    };
+    const productsSnap = await get(query(dbRef(db, 'products'), orderByChild('seller_id'), equalTo(sellerId)));
+    const products = productsSnap.exists() ? Object.entries(productsSnap.val()) : [];
+    if (['suspended', 'rejected'].includes(newStatus)) {
+      for (const [pid, p] of products) {
+        if (p.status === 'approved') {
+          updates[`products/${pid}/status`] = 'disabled';
+          updates[`products/${pid}/disabled_reason`] = 'seller_suspended';
+          updates[`products/${pid}/updated_at`] = now;
+        }
+      }
+    } else if (newStatus === 'live' && current === 'suspended') {
+      for (const [pid, p] of products) {
+        if (p.status === 'disabled' && p.disabled_reason === 'seller_suspended') {
+          updates[`products/${pid}/status`] = 'approved';
+          updates[`products/${pid}/disabled_reason`] = null;
+          updates[`products/${pid}/updated_at`] = now;
+        }
+      }
+    }
+    await update(dbRef(db), updates);
+    try {
+      await push(dbRef(db, 'audit_logs'), { type: 'seller_status_changed', seller_id: sellerId, from: current || null, to: newStatus, reason: reason || null, actor_uid: user?.uid || null, at: now });
+    } catch (err) {
+      console.warn('Audit log write failed:', err?.message);
+    }
     await fetchAllSellers();
     if (user && sellerId === user.uid) await fetchSellerProfile();
   }, [fetchAllSellers, fetchSellerProfile, user]);
@@ -287,6 +322,7 @@ export function SellerProvider({ children }) {
     sellerLoading,
     allSellers,
     SELLER_STATUSES,
+    SELLER_TRANSITIONS,
     BRAND_TYPES,
     BRAND_TIERS,
     CATEGORIES,

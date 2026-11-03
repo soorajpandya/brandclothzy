@@ -1,17 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle, Lock, ArrowRight, Smartphone, CreditCard, Landmark, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { useCart } from '../context/CartContext';
+import { useCart, lineTotal, UNAVAILABLE_SHIPPING_TIERS, SHIPPING_UNAVAILABLE_MESSAGE } from '../context/CartContext';
 import { useUI } from '../context/UIContext';
 import { useAuth } from '../context/AuthContext';
-import { useMarketplace } from '../context/MarketplaceContext';
-import { displayPrice, validateEmail, validatePhone, validatePincode, validateRequired } from '../utils/helpers';
+import { formatPrice, validateEmail, validatePhone, validatePincode, validateRequired } from '../utils/helpers';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import SEO from '../components/SEO';
-import { triggerEmail } from '../utils/mailer';
-
-const RAZORPAY_KEY = import.meta.env.VITE_RAZORPAY_KEY;
+import { api } from '../utils/api';
 
 export default function Checkout() {
   const {
@@ -27,12 +24,14 @@ export default function Checkout() {
   } = useCart();
   const { addToast } = useUI();
   const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword, logout } = useAuth();
-  const { createOrder } = useMarketplace();
   const [step, setStep] = useState(user ? 'shipping' : 'identify');
   const [loading, setLoading] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('upi');
-  const [generatedOrderId, setGeneratedOrderId] = useState('');
+  const [confirmedOrder, setConfirmedOrder] = useState(null);
+  // 'idle' | 'verifying' | 'processing' | 'needs_review'
+  const [paymentState, setPaymentState] = useState('idle');
+  const [pendingOrderId, setPendingOrderId] = useState('');
 
   // Auth form state for unauthenticated checkout
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup' | 'forgot'
@@ -231,84 +230,135 @@ export default function Checkout() {
     });
   };
 
+  // Every attempt to pay gets an idempotency key; it changes whenever the bag or delivery
+  // option changes, so double-clicks reuse one server order but a changed bag gets a new one.
+  const cartSignature = JSON.stringify([items.map((i) => [i.id, i.size, i.quantity]), shippingOption]);
+  const checkoutKeyRef = useRef({ sig: null, key: null });
+  const getCheckoutKey = () => {
+    if (checkoutKeyRef.current.sig !== cartSignature) {
+      checkoutKeyRef.current = { sig: cartSignature, key: crypto.randomUUID() };
+    }
+    return checkoutKeyRef.current.key;
+  };
+
+  const finishConfirmed = (summary) => {
+    setConfirmedOrder(summary);
+    setPaymentState('idle');
+    setOrderPlaced(true);
+    clearCart();
+    addToast('Payment received — your order is confirmed!', 'success');
+    if (typeof window.fbq === 'function') {
+      window.fbq('track', 'Purchase', {
+        value: summary.total,
+        currency: 'INR',
+        content_ids: (summary.items || []).map((i) => i.productId),
+        content_type: 'product',
+        num_items: (summary.items || []).reduce((s, i) => s + i.quantity, 0),
+      });
+    }
+  };
+
+  // Polls the server (which re-checks Razorpay) until the payment is settled.
+  const pollOrderStatus = async (orderId) => {
+    setPaymentState('processing');
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await new Promise((r) => setTimeout(r, attempt < 5 ? 2000 : 5000));
+      try {
+        const { data } = await api(`/api/checkout/orders/${orderId}/status`);
+        if (data.status === 'confirmed') return finishConfirmed(data);
+        if (data.status === 'failed') {
+          setPaymentState('idle');
+          addToast('Your payment did not go through. No money was taken — please try again.', 'error');
+          return;
+        }
+        if (data.status === 'needs_review') {
+          setPendingOrderId(orderId);
+          setPaymentState('needs_review');
+          return;
+        }
+      } catch {
+        /* keep polling */
+      }
+    }
+    setPendingOrderId(orderId);
+    setPaymentState('needs_review');
+  };
+
   const handlePay = async (method) => {
     setLoading(true);
-
     try {
-      if (!RAZORPAY_KEY) {
-        throw new Error('Razorpay Key not found in environment (VITE_RAZORPAY_KEY). Please verify .env');
-      }
       const loaded = await loadRazorpayScript();
-      if (!loaded) throw new Error('Payment gateway failed to load');
+      if (!loaded) throw new Error('Payment gateway failed to load. Please check your connection.');
+
+      // 1. Server prices the bag and creates the order + Razorpay order. Only IDs, sizes and
+      //    quantities are sent — the amount comes back from the server.
+      const { data: checkout } = await api('/api/checkout/orders', {
+        method: 'POST',
+        body: {
+          idempotencyKey: getCheckoutKey(),
+          items: items.map((item) => ({ productId: String(item.id), size: item.size || '', quantity: item.quantity })),
+          shippingOption,
+          contact: {
+            firstName: shippingForm.firstName,
+            lastName: shippingForm.lastName,
+            email: shippingForm.email,
+            phone: shippingForm.phone,
+          },
+          shippingAddress: {
+            address: shippingForm.address,
+            city: shippingForm.city,
+            state: shippingForm.state,
+            pincode: shippingForm.pincode,
+          },
+        },
+      });
+      if (checkout.total !== total) {
+        addToast(`Prices were updated. Your order total is ${formatPrice(checkout.total)}.`, 'info', 6000);
+      }
 
       const options = {
-        key: RAZORPAY_KEY,
-        amount: Math.round(total * 1.4 * 100),
-        currency: 'INR',
+        key: checkout.keyId,
+        order_id: checkout.razorpayOrderId,
+        amount: checkout.amountPaise,
+        currency: checkout.currency,
         name: 'BrandClothzy',
-        description: `Order for ${shippingForm.firstName} ${shippingForm.lastName}`,
+        description: `Order ${checkout.orderId}`,
         prefill: {
           name: `${shippingForm.firstName} ${shippingForm.lastName}`,
           email: shippingForm.email,
           contact: shippingForm.phone,
         },
+        notes: { internal_order_id: checkout.orderId },
+        // 3. Browser success is NOT proof of payment: the server verifies the signature and
+        //    checks the payment with Razorpay before confirming.
         handler: async (response) => {
-          const paymentId = response.razorpay_payment_id || `BCZ-${Date.now().toString().slice(-8)}`;
+          setPaymentState('verifying');
           try {
-            const order = await createOrder({
-              customerName: `${shippingForm.firstName} ${shippingForm.lastName}`,
-              customerEmail: shippingForm.email,
-              customerPhone: shippingForm.phone,
-              shippingAddress: {
-                address: shippingForm.address,
-                city: shippingForm.city,
-                state: shippingForm.state,
-                pincode: shippingForm.pincode,
+            const { status, data } = await api('/api/checkout/verify', {
+              method: 'POST',
+              body: {
+                orderId: checkout.orderId,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
               },
-              items: items.map(item => ({
-                id: item.id,
-                seller_id: item.seller_id || '',
-                name: item.name,
-                price: item.price,
-                quantity: item.quantity,
-                size: item.selectedSize || '',
-                color: item.selectedColor || '',
-                images: item.images || [],
-              })),
-              subtotal,
-              shipping,
-              total: Math.round(total * 1.4),
-              paymentId,
             });
-            setGeneratedOrderId(order.id);
+            if (status === 200 && data.status === 'confirmed') return finishConfirmed(data);
+            if (data?.status === 'needs_review') {
+              setPendingOrderId(checkout.orderId);
+              setPaymentState('needs_review');
+              return;
+            }
+            return pollOrderStatus(checkout.orderId);
           } catch (err) {
-            // Order save failed — still show success with payment ID so customer is not confused
-            console.error('Order save failed:', err);
-            setGeneratedOrderId(paymentId);
+            if (err?.status === 402) {
+              setPaymentState('idle');
+              addToast('Your payment did not go through. Please try again.', 'error');
+              return;
+            }
+            // Network/server problem after paying: keep checking instead of showing an error.
+            return pollOrderStatus(checkout.orderId);
           }
-
-          // Trigger automated order confirmation email (Non-blocking)
-          triggerEmail({
-            to: shippingForm.email,
-            type: 'order_confirmed',
-            name: `${shippingForm.firstName} ${shippingForm.lastName}`,
-            data: {
-              orderId: paymentId,
-              total: Math.round(total * 1.4),
-            },
-          });
-          if (typeof window.fbq === 'function') {
-            window.fbq('track', 'Purchase', {
-              value: Math.round(total * 1.4),
-              currency: 'INR',
-              content_ids: items.map((i) => i.id),
-              content_type: 'product',
-              num_items: items.reduce((s, i) => s + i.quantity, 0),
-            });
-          }
-          setOrderPlaced(true);
-          clearCart();
-          addToast('Payment successful \u2014 Order placed!', 'success');
         },
         modal: { ondismiss: () => setLoading(false) },
         theme: { color: '#1A1A1A' },
@@ -329,14 +379,44 @@ export default function Checkout() {
       });
       rzp.open();
     } catch (err) {
-      console.error('Payment error:', err);
-      addToast(err?.message || 'Unable to initiate payment. Please try again.', 'error');
+      console.error('Payment error:', err?.message);
+      addToast(err?.message || 'Unable to start payment. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
+  if (paymentState === 'verifying' || paymentState === 'processing') {
+    return (
+      <div className="pt-32 pb-20 text-center max-w-lg mx-auto px-4" role="status" aria-live="polite">
+        <div className="w-12 h-12 mx-auto mb-6 border-2 border-luxury-gold border-t-transparent rounded-full animate-spin" />
+        <h1 className="font-serif text-3xl text-luxury-charcoal mb-3">Confirming your payment…</h1>
+        <p className="text-sm text-neutral-500 font-light leading-relaxed">
+          Please don't close this page. We're confirming your payment with the bank — this usually takes a few seconds.
+        </p>
+      </div>
+    );
+  }
 
+  if (paymentState === 'needs_review') {
+    return (
+      <div className="pt-32 pb-20 text-center max-w-lg mx-auto px-4">
+        <div className="w-20 h-20 mx-auto mb-6 flex items-center justify-center bg-amber-50 rounded-full">
+          <AlertCircle size={36} className="text-amber-500" />
+        </div>
+        <h1 className="font-serif text-3xl text-luxury-charcoal mb-3">We're checking your payment</h1>
+        <p className="text-sm text-neutral-500 font-light mb-3 leading-relaxed">
+          We couldn't confirm your payment automatically yet. Your order is saved and our team will verify it shortly.
+          If money was deducted and the order isn't confirmed, it will be confirmed or refunded in full.
+        </p>
+        <p className="text-xs text-neutral-400 font-light mb-8">Reference: {pendingOrderId}</p>
+        <Link to="/contact"><Button variant="outline" size="lg">Contact Support</Button></Link>
+        <div className="mt-4">
+          <Link to="/account" className="text-sm text-luxury-gold hover:underline">View Order History</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (items.length === 0 && !orderPlaced) {
     return (
@@ -362,11 +442,11 @@ export default function Checkout() {
           Thank You for Your Order
         </h1>
         <p className="text-sm text-neutral-400 font-light mb-3 leading-relaxed">
-          Your order has been placed successfully. A confirmation email has been sent to{' '}
+          Your payment was received and your order is confirmed. A confirmation email is on its way to{' '}
           <span className="text-luxury-charcoal font-medium">{shippingForm.email}</span>.
         </p>
         <p className="text-xs text-neutral-400 font-light mb-10">
-          Order #{generatedOrderId || `BCZ-${Date.now().toString().slice(-8)}`}
+          Order #{confirmedOrder?.orderId} · Total paid {formatPrice(confirmedOrder?.total || 0)}
         </p>
         <div className="bg-luxury-pearl p-6 mb-8 text-left">
           <h3 className="text-[10px] uppercase tracking-[0.2em] font-semibold text-luxury-taupe mb-4">
@@ -772,12 +852,14 @@ export default function Checkout() {
                       {shippingTiers.map((tier) => {
                         const isFree = tier.id === 'standard' && visibleSubtotal >= 999;
                         const isSelected = shippingOption === tier.id;
+                        const isUnavailable = UNAVAILABLE_SHIPPING_TIERS.includes(tier.id);
                         return (
                           <button
                             key={tier.id}
                             type="button"
-                            onClick={() => setShippingOption(tier.id)}
-                            className={`p-3.5 border text-left transition-all flex flex-col justify-between ${
+                            onClick={() => { if (!setShippingOption(tier.id)) addToast(SHIPPING_UNAVAILABLE_MESSAGE, 'info', 5000); }}
+                            aria-disabled={isUnavailable}
+                            className={`p-3.5 border text-left transition-all flex flex-col justify-between ${isUnavailable ? 'opacity-50 cursor-not-allowed' : ''} ${
                               isSelected
                                 ? 'border-luxury-charcoal bg-white shadow-sm ring-1 ring-luxury-charcoal/20'
                                 : 'border-neutral-200/80 bg-luxury-pearl/30 hover:border-neutral-300'
@@ -789,7 +871,7 @@ export default function Checkout() {
                                 {isFree ? 'Free' : `₹${tier.price}`}
                               </span>
                             </div>
-                            <p className="text-[11px] text-neutral-400 font-light leading-relaxed">{tier.timeline}</p>
+                            <p className="text-[11px] text-neutral-400 font-light leading-relaxed">{isUnavailable ? 'Unavailable during the festive season' : tier.timeline}</p>
                           </button>
                         );
                       })}
@@ -815,7 +897,7 @@ export default function Checkout() {
                     onClick={() => setStep('shipping')}
                     className="text-[10px] uppercase tracking-[0.1em] text-luxury-taupe hover:text-luxury-charcoal transition-colors"
                   >
-                    â† Edit Shipping
+                    ← Edit Shipping
                   </button>
                 </div>
 
@@ -868,11 +950,11 @@ export default function Checkout() {
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-luxury-charcoal truncate">{item.name}</p>
                                 <p className="text-[11px] text-neutral-400 font-light">
-                                  {item.color} · {item.size} · Qty {item.quantity}
+                                  Size {item.size} · Qty {item.quantity}
                                 </p>
                               </div>
                               <p className="text-sm font-medium text-luxury-charcoal flex-shrink-0">
-                                {displayPrice(item.price * item.quantity)}
+                                {formatPrice(lineTotal(item))}
                               </p>
                             </div>
                           ))}
@@ -880,7 +962,7 @@ export default function Checkout() {
                         <div className="border-t border-neutral-100 pt-4 space-y-2.5">
                           <div className="flex justify-between text-sm">
                             <span className="text-neutral-500 font-light">Subtotal</span>
-                            <span className="font-medium text-luxury-charcoal">{displayPrice(subtotal)}</span>
+                            <span className="font-medium text-luxury-charcoal">{formatPrice(subtotal)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-neutral-500 font-light">GST (Included)</span>
@@ -889,12 +971,12 @@ export default function Checkout() {
                           <div className="flex justify-between text-sm">
                             <span className="text-neutral-500 font-light">Shipping</span>
                             <span className="font-medium text-luxury-charcoal">
-                              {shipping === 0 ? 'Complimentary' : displayPrice(shipping)}
+                              {shipping === 0 ? 'Complimentary' : formatPrice(shipping)}
                             </span>
                           </div>
                           <div className="flex justify-between items-baseline pt-3 border-t border-neutral-100">
                             <span className="text-xs uppercase tracking-[0.15em] font-semibold text-luxury-taupe">Total</span>
-                            <span className="text-xl font-serif font-semibold text-luxury-charcoal">{displayPrice(total)}</span>
+                            <span className="text-xl font-serif font-semibold text-luxury-charcoal">{formatPrice(total)}</span>
                           </div>
                         </div>
                       </div>
@@ -913,7 +995,7 @@ export default function Checkout() {
                         </p>
 
                         <p className="text-xl font-serif font-semibold text-luxury-charcoal mb-6 text-center">
-                          {displayPrice(total)}
+                          {formatPrice(total)}
                         </p>
 
                         <Button
@@ -923,7 +1005,7 @@ export default function Checkout() {
                           className="w-full"
                         >
                           <Lock size={14} />
-                          Pay {displayPrice(total)}
+                          Pay {formatPrice(total)}
                         </Button>
 
                         <p className="mt-4 text-[10px] text-neutral-400 font-light flex items-center justify-center gap-1.5">
@@ -953,11 +1035,11 @@ export default function Checkout() {
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-luxury-charcoal truncate">{item.name}</p>
                                 <p className="text-[11px] text-neutral-400 font-light">
-                                  {item.color} · {item.size} · Qty {item.quantity}
+                                  Size {item.size} · Qty {item.quantity}
                                 </p>
                               </div>
                               <p className="text-sm font-medium text-luxury-charcoal flex-shrink-0">
-                                {displayPrice(item.price * item.quantity)}
+                                {formatPrice(lineTotal(item))}
                               </p>
                             </div>
                           ))}
@@ -965,7 +1047,7 @@ export default function Checkout() {
                         <div className="border-t border-neutral-100 pt-4 space-y-2.5">
                           <div className="flex justify-between text-sm">
                             <span className="text-neutral-500 font-light">Subtotal</span>
-                            <span className="font-medium text-luxury-charcoal">{displayPrice(subtotal)}</span>
+                            <span className="font-medium text-luxury-charcoal">{formatPrice(subtotal)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-neutral-500 font-light">GST (Included)</span>
@@ -974,12 +1056,12 @@ export default function Checkout() {
                           <div className="flex justify-between text-sm">
                             <span className="text-neutral-500 font-light">Shipping</span>
                             <span className="font-medium text-luxury-charcoal">
-                              {shipping === 0 ? 'Complimentary' : displayPrice(shipping)}
+                              {shipping === 0 ? 'Complimentary' : formatPrice(shipping)}
                             </span>
                           </div>
                           <div className="flex justify-between items-baseline pt-3 border-t border-neutral-100">
                             <span className="text-xs uppercase tracking-[0.15em] font-semibold text-luxury-taupe">Total</span>
-                            <span className="text-xl font-serif font-semibold text-luxury-charcoal">{displayPrice(total)}</span>
+                            <span className="text-xl font-serif font-semibold text-luxury-charcoal">{formatPrice(total)}</span>
                           </div>
                         </div>
                       </div>
@@ -998,7 +1080,7 @@ export default function Checkout() {
                         </p>
 
                         <p className="text-xl font-serif font-semibold text-luxury-charcoal mb-6 text-center">
-                          {displayPrice(total)}
+                          {formatPrice(total)}
                         </p>
 
                         <Button
@@ -1008,7 +1090,7 @@ export default function Checkout() {
                           className="w-full"
                         >
                           <Lock size={14} />
-                          Pay {displayPrice(total)}
+                          Pay {formatPrice(total)}
                         </Button>
 
                         <p className="mt-4 text-[10px] text-neutral-400 font-light flex items-center justify-center gap-1.5">
@@ -1038,11 +1120,11 @@ export default function Checkout() {
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-luxury-charcoal truncate">{item.name}</p>
                                 <p className="text-[11px] text-neutral-400 font-light">
-                                  {item.color} · {item.size} · Qty {item.quantity}
+                                  Size {item.size} · Qty {item.quantity}
                                 </p>
                               </div>
                               <p className="text-sm font-medium text-luxury-charcoal flex-shrink-0">
-                                {displayPrice(item.price * item.quantity)}
+                                {formatPrice(lineTotal(item))}
                               </p>
                             </div>
                           ))}
@@ -1050,7 +1132,7 @@ export default function Checkout() {
                         <div className="border-t border-neutral-100 pt-4 space-y-2.5">
                           <div className="flex justify-between text-sm">
                             <span className="text-neutral-500 font-light">Subtotal</span>
-                            <span className="font-medium text-luxury-charcoal">{displayPrice(subtotal)}</span>
+                            <span className="font-medium text-luxury-charcoal">{formatPrice(subtotal)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
                             <span className="text-neutral-500 font-light">GST (Included)</span>
@@ -1059,12 +1141,12 @@ export default function Checkout() {
                           <div className="flex justify-between text-sm">
                             <span className="text-neutral-500 font-light">Shipping</span>
                             <span className="font-medium text-luxury-charcoal">
-                              {shipping === 0 ? 'Complimentary' : displayPrice(shipping)}
+                              {shipping === 0 ? 'Complimentary' : formatPrice(shipping)}
                             </span>
                           </div>
                           <div className="flex justify-between items-baseline pt-3 border-t border-neutral-100">
                             <span className="text-xs uppercase tracking-[0.15em] font-semibold text-luxury-taupe">Total</span>
-                            <span className="text-xl font-serif font-semibold text-luxury-charcoal">{displayPrice(total)}</span>
+                            <span className="text-xl font-serif font-semibold text-luxury-charcoal">{formatPrice(total)}</span>
                           </div>
                         </div>
                       </div>
@@ -1083,7 +1165,7 @@ export default function Checkout() {
                         </p>
 
                         <p className="text-xl font-serif font-semibold text-luxury-charcoal mb-6 text-center">
-                          {displayPrice(total)}
+                          {formatPrice(total)}
                         </p>
 
                         <Button
@@ -1093,7 +1175,7 @@ export default function Checkout() {
                           className="w-full"
                         >
                           <Lock size={14} />
-                          Pay {displayPrice(total)}
+                          Pay {formatPrice(total)}
                         </Button>
 
                         <p className="mt-4 text-[10px] text-neutral-400 font-light flex items-center justify-center gap-1.5">
@@ -1128,10 +1210,10 @@ export default function Checkout() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-luxury-charcoal truncate">{item.name}</p>
                       <p className="text-[11px] text-neutral-400 font-light">
-                        {item.color} · {item.size} · Qty {item.quantity}
+                        Size {item.size} · Qty {item.quantity}
                       </p>
                       <p className="text-sm font-medium mt-0.5">
-                        {displayPrice(item.price * item.quantity)}
+                        {formatPrice(lineTotal(item))}
                       </p>
                     </div>
                   </div>
@@ -1141,17 +1223,17 @@ export default function Checkout() {
               <div className="border-t border-neutral-200 pt-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-neutral-500 font-light">Subtotal</span>
-                  <span className="font-medium">{displayPrice(subtotal)}</span>
+                  <span className="font-medium">{formatPrice(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-neutral-500 font-light">Shipping</span>
                   <span className={`font-medium ${shipping === 0 ? 'text-emerald-600' : ''}`}>
-                    {shipping === 0 ? 'Complimentary' : displayPrice(shipping)}
+                    {shipping === 0 ? 'Complimentary' : formatPrice(shipping)}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm pt-3 border-t border-neutral-200">
                   <span className="font-medium">Total</span>
-                  <span className="text-lg font-semibold">{displayPrice(total)}</span>
+                  <span className="text-lg font-semibold">{formatPrice(total)}</span>
                 </div>
               </div>
             </div>

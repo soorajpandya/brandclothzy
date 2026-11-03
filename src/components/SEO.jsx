@@ -1,3 +1,4 @@
+import { customerUnitPrice } from '../../shared/pricing.js';
 import { Helmet } from 'react-helmet-async';
 
 const SITE_NAME = 'BrandClothzy';
@@ -72,11 +73,13 @@ export function ProductJsonLd(product) {
       '@type': 'Offer',
       url: `https://brandclothzy.com/product/${product.id}`,
       priceCurrency: 'INR',
-      price: product.price,
-      ...(product.originalPrice && {
+      // Customer-facing selling price — the same number shown on the page and charged at checkout.
+      price: customerUnitPrice(product.price),
+      ...(customerUnitPrice(product.originalPrice) > customerUnitPrice(product.price) && {
         priceSpecification: {
-          '@type': 'PriceSpecification',
-          price: product.originalPrice,
+          '@type': 'UnitPriceSpecification',
+          priceType: 'https://schema.org/StrikethroughPrice',
+          price: customerUnitPrice(product.originalPrice),
           priceCurrency: 'INR',
         },
       }),

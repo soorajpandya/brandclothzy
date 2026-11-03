@@ -25,3 +25,8 @@ Thumbs.db
 *.pem
 *.key
 Brand_Clothzy_Razorpay_Keys.txt
+
+# Firebase Admin service-account keys (never commit)
+*service-account*.json
+serviceAccount*.json
+*-firebase-adminsdk-*.json

@@ -1,3 +1,5 @@
+import { customerUnitPrice } from '../../shared/pricing.js';
+
 export function formatPrice(price) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -7,8 +9,9 @@ export function formatPrice(price) {
   }).format(price);
 }
 
-export function displayPrice(price) {
-  return formatPrice(Math.round(price * 1.4));
+/** Formats a product's BASE price as the customer selling price (single pricing policy in shared/pricing.js). */
+export function displayPrice(basePrice) {
+  return formatPrice(customerUnitPrice(basePrice));
 }
 
 export function validateEmail(email) {
@@ -111,4 +114,13 @@ export function validateCIN(cin) {
 export function validateURL(url) {
   if (!url) return true;
   try { new URL(url); return true; } catch { return false; }
+}
+
+/**
+ * Responsive srcset for locally hosted catalog images (/images/products/{id}.webp has a
+ * 480px sibling {id}-480.webp). Remote images (seller uploads) are returned unchanged.
+ */
+export function productImageSrcSet(url) {
+  const m = typeof url === 'string' && url.match(/^(\/images\/products\/\d+)\.webp$/);
+  return m ? `${m[1]}-480.webp 480w, ${url} 1024w` : undefined;
 }
